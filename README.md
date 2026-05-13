@@ -211,6 +211,12 @@ See:
 - `docs/development/haptools-linux-workflow.md`
 - `docs/release/pypi-release.md`
 
+## Acknowledgements
+
+haptools is inspired by geneHapR:
+
+> Zhang, R., Jia, G. & Diao, X. geneHapR: an R package for gene haplotypic statistics and visualization. BMC Bioinformatics 24, 199 (2023). https://doi.org/10.1186/s12859-023-05318-9
+
 ## License
 
 GPL-3.0-or-later.

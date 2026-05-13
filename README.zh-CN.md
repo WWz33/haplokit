@@ -211,6 +211,12 @@ ctest --test-dir build-wsl --output-on-failure
 - `docs/development/haptools-linux-workflow.md`
 - `docs/release/pypi-release.md`
 
+## 致谢
+
+haptools 的设计灵感来自 geneHapR：
+
+> Zhang, R., Jia, G. & Diao, X. geneHapR: an R package for gene haplotypic statistics and visualization. BMC Bioinformatics 24, 199 (2023). https://doi.org/10.1186/s12859-023-05318-9
+
 ## 许可证
 
 GPL-3.0-or-later。
