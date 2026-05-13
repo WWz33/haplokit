@@ -89,6 +89,12 @@ haptools view data/var.sorted.vcf.gz -r scaffold_1:4300-5000 --output-file out
 
 Python CLI 会把核心单倍型分组计算委托给 `haptools_cpp`。
 
+### 供应商依赖库
+
+- **[htslib](https://github.com/samtools/htslib)** — 高通量测序数据读写 C 库。原生支持 VCF 和 BCF 格式，提供索引随机访问和高效基因型解码。构建时链接为静态库。
+
+- **[gffsub](https://github.com/WWz33/gffsub)** — 轻量级 GFF3/GTF 解析与过滤库。解析基因注释文件，支持 feature 类型过滤（最长转录本选择），提供 overlap/nearest-gene 查询用于单倍型注释。
+
 后端发现顺序：
 
 1. `HAPTOOLS_CPP_BIN`

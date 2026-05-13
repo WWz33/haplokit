@@ -75,6 +75,8 @@ ParsedViewJsonCommand parse_view_json_command(int argc, char** argv) {
                 parsed.options.output_mode = haptools::OutputMode::Summary;
             } else if (value == "detail") {
                 parsed.options.output_mode = haptools::OutputMode::Detail;
+            } else if (value == "both") {
+                parsed.options.output_mode = haptools::OutputMode::Both;
             } else {
                 throw std::runtime_error("unsupported --output value: " + value);
             }

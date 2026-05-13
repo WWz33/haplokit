@@ -17,6 +17,7 @@ enum class GroupBy {
 enum class OutputMode {
     Summary,
     Detail,
+    Both,
 };
 
 struct ViewOptions {

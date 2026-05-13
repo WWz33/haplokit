@@ -89,6 +89,12 @@ Validation rules:
 
 The Python CLI delegates heavy hap grouping work to `haptools_cpp`.
 
+### Vendored libraries
+
+- **[htslib](https://github.com/samtools/htslib)** — C library for reading/writing high-throughput sequencing data. Provides native support for VCF and BCF formats, with indexed random access and efficient genotype decoding. Linked as a static library at build time.
+
+- **[gffsub](https://github.com/WWz33/gffsub)** — Lightweight GFF3/GTF parser and filter. Parses gene annotation files, supports feature-type filtering (longest transcript selection), and provides overlap/nearest-gene queries for haplotype annotation.
+
 Backend discovery order:
 
 1. `HAPTOOLS_CPP_BIN`

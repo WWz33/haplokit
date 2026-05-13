@@ -141,6 +141,16 @@ RegionData VcfReader::fetch(const Region& region, const std::vector<std::string>
         std::vector<int> sample_indexes;
         data.samples = resolve_samples(hdr, samples, &sample_indexes);
 
+        // Enable sample subset at the reader level for BCF performance
+        if (!samples.empty()) {
+            std::vector<const char*> sample_ptrs;
+            sample_ptrs.reserve(samples.size());
+            for (const auto& s : samples) {
+                sample_ptrs.push_back(s.c_str());
+            }
+            bcf_sr_set_samples(sr, sample_ptrs.data(), static_cast<int>(sample_ptrs.size()), 0);
+        }
+
         while (bcf_sr_next_line(sr) > 0) {
             bcf1_t* rec = bcf_sr_get_line(sr, 0);
             if (rec == nullptr) {

@@ -2,8 +2,8 @@
 
 #include <algorithm>
 #include <fstream>
-#include <iomanip>
 #include <map>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -38,7 +38,7 @@ std::string join_states(const std::vector<std::string>& states) {
     return buffer.str();
 }
 
-std::vector<HaplotypeDetailRow> build_exact_accessions(const RegionData& data, bool impute_ref) {
+std::vector<HaplotypeDetailRow> build_sample_profiles(const RegionData& data, bool impute_ref) {
     std::vector<HaplotypeDetailRow> rows;
     for (std::size_t sample_idx = 0; sample_idx < data.samples.size(); ++sample_idx) {
         std::vector<std::string> states;
@@ -60,39 +60,26 @@ std::vector<HaplotypeDetailRow> build_exact_accessions(const RegionData& data, b
     return rows;
 }
 
-int state_distance(const std::string& left, const std::string& right) {
-    return left == right ? 0 : 1;
-}
-
 std::vector<HaplotypeDetailRow> build_approx_accessions(
     const RegionData& data,
     bool impute_ref,
     double max_diff) {
-    std::vector<std::pair<std::string, std::vector<std::string>>> raw_profiles;
-    for (std::size_t sample_idx = 0; sample_idx < data.samples.size(); ++sample_idx) {
-        std::vector<std::string> states;
-        states.reserve(data.variants.size());
-        bool skip = false;
-        for (const auto& variant : data.variants) {
-            const auto normalized = normalize_call(variant.genotypes[sample_idx], impute_ref);
-            if (!normalized.has_value()) {
-                skip = true;
-                break;
-            }
-            states.push_back(*normalized);
-        }
-        if (skip) {
-            continue;
-        }
-        raw_profiles.emplace_back(data.samples[sample_idx], std::move(states));
-    }
+    auto raw_profiles = build_sample_profiles(data, impute_ref);
 
     std::vector<HaplotypeDetailRow> rows;
     std::vector<std::vector<std::string>> representatives;
     std::vector<std::string> labels;
     for (const auto& profile : raw_profiles) {
-        const auto& sample_name = profile.first;
-        const auto& states = profile.second;
+        const auto& sample_name = profile.sample;
+        const auto& states_str = profile.hap;
+        // Parse the joined state string back for distance calc
+        std::vector<std::string> states;
+        std::istringstream iss(states_str);
+        std::string token;
+        while (std::getline(iss, token, '|')) {
+            states.push_back(token);
+        }
+
         std::optional<std::string> assigned;
         for (std::size_t rep_idx = 0; rep_idx < representatives.size(); ++rep_idx) {
             const auto& representative = representatives[rep_idx];
@@ -102,7 +89,9 @@ std::vector<HaplotypeDetailRow> build_approx_accessions(
             }
             int diffs = 0;
             for (std::size_t state_idx = 0; state_idx < representative.size() && state_idx < states.size(); ++state_idx) {
-                diffs += state_distance(representative[state_idx], states[state_idx]);
+                if (representative[state_idx] != states[state_idx]) {
+                    ++diffs;
+                }
             }
             if (static_cast<double>(diffs) / static_cast<double>(comparable) <= max_diff) {
                 assigned = labels[rep_idx];
@@ -141,47 +130,6 @@ std::vector<HaplotypeSummaryRow> summarize_accessions(const std::vector<Haplotyp
     return rows;
 }
 
-std::string escape_json(const std::string& value) {
-    std::ostringstream escaped;
-    for (const char ch : value) {
-        switch (ch) {
-            case '\\':
-                escaped << "\\\\";
-                break;
-            case '"':
-                escaped << "\\\"";
-                break;
-            case '\n':
-                escaped << "\\n";
-                break;
-            case '\r':
-                escaped << "\\r";
-                break;
-            case '\t':
-                escaped << "\\t";
-                break;
-            default:
-                escaped << ch;
-                break;
-        }
-    }
-    return escaped.str();
-}
-
-std::string json_string(const std::string& value) {
-    return "\"" + escape_json(value) + "\"";
-}
-
-std::string json_bool(bool value) {
-    return value ? "true" : "false";
-}
-
-std::string json_number(double value) {
-    std::ostringstream buffer;
-    buffer << std::setprecision(15) << value;
-    return buffer.str();
-}
-
 }  // namespace
 
 ViewResult build_view_result(const RegionData& data, const ViewOptions& options) {
@@ -191,7 +139,8 @@ ViewResult build_view_result(const RegionData& data, const ViewOptions& options)
             ? (options.by == GroupBy::Region ? "approx-region" : "approx-site")
             : (options.by == GroupBy::Region ? "strict-region" : "strict-site");
     result.grouping_method = options.max_diff.has_value() ? "max-diff" : "exact";
-    result.output_mode = options.output_mode == OutputMode::Summary ? "summary" : "detail";
+    result.output_mode = options.output_mode == OutputMode::Both ? "both"
+        : options.output_mode == OutputMode::Summary ? "summary" : "detail";
     result.imputed_ref = options.impute;
     result.max_diff = options.max_diff;
     result.variant_count = static_cast<int>(data.variants.size());
@@ -214,13 +163,18 @@ ViewResult build_view_result(const RegionData& data, const ViewOptions& options)
         if (options.max_diff.has_value()) {
             accessions = build_approx_accessions(data, options.impute, *options.max_diff);
         } else {
-            accessions = build_exact_accessions(data, options.impute);
+            accessions = build_sample_profiles(data, options.impute);
         }
     }
 
     const auto summary = summarize_accessions(accessions);
     result.haplotype_count = static_cast<int>(summary.size());
-    if (options.output_mode == OutputMode::Summary) {
+
+    // Always populate both fields for Both mode; otherwise per output_mode
+    if (options.output_mode == OutputMode::Both) {
+        result.haplotypes = summary;
+        result.accessions = std::move(accessions);
+    } else if (options.output_mode == OutputMode::Summary) {
         result.haplotypes = summary;
     } else {
         result.accessions = std::move(accessions);
@@ -229,80 +183,57 @@ ViewResult build_view_result(const RegionData& data, const ViewOptions& options)
 }
 
 std::string serialize_view_result_json(const ViewResult& result) {
-    std::ostringstream json;
-    json << "{";
-    json << "\"grouping_method\":" << json_string(result.grouping_method) << ",";
-    json << "\"grouping_mode\":" << json_string(result.grouping_mode) << ",";
-    json << "\"haplotype_count\":" << result.haplotype_count << ",";
-    json << "\"imputed_ref\":" << json_bool(result.imputed_ref) << ",";
-    json << "\"max_diff\":";
-    if (result.max_diff.has_value()) {
-        json << json_number(*result.max_diff);
-    } else {
-        json << "null";
-    }
-    json << ",";
-    json << "\"output_mode\":" << json_string(result.output_mode) << ",";
-    json << "\"sample_count\":" << result.sample_count << ",";
-    json << "\"variant_count\":" << result.variant_count << ",";
-    json << "\"sites\":[";
-    for (std::size_t idx = 0; idx < result.sites.size(); ++idx) {
-        if (idx > 0) {
-            json << ",";
-        }
-        json << "{"
-             << "\"allele\":" << json_string(result.sites[idx].allele) << ","
-             << "\"chrom\":" << json_string(result.sites[idx].chrom) << ","
-             << "\"pos\":" << result.sites[idx].pos
-             << "}";
-    }
-    json << "]";
+    using json = nlohmann::json;
+    json j;
+    j["grouping_method"] = result.grouping_method;
+    j["grouping_mode"] = result.grouping_mode;
+    j["haplotype_count"] = result.haplotype_count;
+    j["imputed_ref"] = result.imputed_ref;
+    j["max_diff"] = result.max_diff.has_value() ? json(*result.max_diff) : json(nullptr);
+    j["output_mode"] = result.output_mode;
+    j["sample_count"] = result.sample_count;
+    j["variant_count"] = result.variant_count;
 
-    if (result.output_mode == "summary") {
-        json << ",\"haplotypes\":[";
-        for (std::size_t idx = 0; idx < result.haplotypes.size(); ++idx) {
-            if (idx > 0) {
-                json << ",";
-            }
-            json << "{"
-                 << "\"count\":" << result.haplotypes[idx].count << ","
-                 << "\"hap\":" << json_string(result.haplotypes[idx].hap)
-                 << "}";
+    json sites = json::array();
+    for (const auto& site : result.sites) {
+        sites.push_back({{"allele", site.allele}, {"chrom", site.chrom}, {"pos", site.pos}});
+    }
+    j["sites"] = sites;
+
+    if (result.output_mode == "summary" || result.output_mode == "both") {
+        json haps = json::array();
+        for (const auto& h : result.haplotypes) {
+            haps.push_back({{"count", h.count}, {"hap", h.hap}});
         }
-        json << "]";
-    } else {
-        json << ",\"accessions\":[";
-        for (std::size_t idx = 0; idx < result.accessions.size(); ++idx) {
-            if (idx > 0) {
-                json << ",";
-            }
-            json << "{"
-                 << "\"hap\":" << json_string(result.accessions[idx].hap) << ","
-                 << "\"sample\":" << json_string(result.accessions[idx].sample)
-                 << "}";
+        j["haplotypes"] = haps;
+    }
+
+    if (result.output_mode == "detail" || result.output_mode == "both") {
+        json accs = json::array();
+        for (const auto& a : result.accessions) {
+            accs.push_back({{"hap", a.hap}, {"sample", a.sample}});
         }
-        json << "]";
+        j["accessions"] = accs;
     }
 
     if (result.annotation.has_value()) {
         const auto& ann = *result.annotation;
-        json << ",\"annotation\":{";
-        json << "\"mode\":" << json_string(ann.mode);
+        json ann_json;
+        ann_json["mode"] = ann.mode;
         if (ann.mode != "none") {
-            json << ",\"id\":" << json_string(ann.id);
-            json << ",\"seqid\":" << json_string(ann.seqid);
-            json << ",\"start\":" << ann.start;
-            json << ",\"end\":" << ann.end;
-            json << ",\"strand\":" << json_string(std::string(1, ann.strand));
+            ann_json["id"] = ann.id;
+            ann_json["seqid"] = ann.seqid;
+            ann_json["start"] = ann.start;
+            ann_json["end"] = ann.end;
+            ann_json["strand"] = std::string(1, ann.strand);
         }
         if (ann.mode == "nearest" && ann.distance.has_value()) {
-            json << ",\"distance\":" << *ann.distance;
+            ann_json["distance"] = *ann.distance;
         }
-        json << "}";
+        j["annotation"] = ann_json;
     }
 
-    json << "}";
-    return json.str();
+    return j.dump();
 }
 
 std::vector<std::string> load_sample_list(const std::string& path) {

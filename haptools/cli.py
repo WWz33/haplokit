@@ -478,8 +478,11 @@ def _compose_row(
 
     if args.output_mode == "summary":
         row["haplotypes"] = backend_row["haplotypes"]
-    else:
+    elif args.output_mode == "detail":
         row["accessions"] = backend_row["accessions"]
+    else:  # both
+        row["haplotypes"] = backend_row.get("haplotypes", [])
+        row["accessions"] = backend_row.get("accessions", [])
 
     if "annotation" in backend_row:
         row["annotation"] = backend_row["annotation"]
@@ -537,8 +540,9 @@ def main(argv: list[str] | None = None) -> int:
             summary_rows = _run_cpp_view_batch(args, "summary")
             detail_rows = _run_cpp_view_batch(args, "detail")
         else:
-            summary_rows = [_run_cpp_view_mode(selector, args, "summary") for selector in selectors]
-            detail_rows = [_run_cpp_view_mode(selector, args, "detail") for selector in selectors]
+            both_rows = [_run_cpp_view_mode(selector, args, "both") for selector in selectors]
+            summary_rows = both_rows
+            detail_rows = both_rows
 
         if len(summary_rows) != len(selectors) or len(detail_rows) != len(selectors):
             raise RuntimeError("backend row count did not match selector count")
@@ -568,11 +572,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.plot:
         if args.regions_file:
-            summary_rows = _run_cpp_view_batch(args, "summary")
-            detail_rows = _run_cpp_view_batch(args, "detail")
+            both_rows = _run_cpp_view_batch(args, "both")
+            summary_rows = both_rows
+            detail_rows = both_rows
         else:
-            summary_rows = [_run_cpp_view_mode(selector, args, "summary") for selector in selectors]
-            detail_rows = [_run_cpp_view_mode(selector, args, "detail") for selector in selectors]
+            both_rows = [_run_cpp_view_mode(selector, args, "both") for selector in selectors]
+            summary_rows = both_rows
+            detail_rows = both_rows
 
         written = _write_plot_artifacts(args, selectors, summary_rows, detail_rows)
         if len(written) != len(rows):

@@ -26,6 +26,7 @@ target_include_directories(haptools_core
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/src/cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/deps/gffsub/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/deps/nlohmann
         ${HAPTOOLS_HTSLIB_INCLUDE_DIRS}
 )
 
