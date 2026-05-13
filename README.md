@@ -47,11 +47,11 @@ The haplotype summary table displays all identified haplotypes across variant po
 - **Title**: Shows the genomic region (`CHR:start-end`) and, when `--gff` is provided, the overlapping gene name.
 - **Functional category strip** (`--gff` only): A thin colored bar above the POS row. Each variant position is classified into a SnpEff-style functional category (CDS, UTR, exon, intron, upstream/downstream, intergenic) based on GFF3 annotation. Provides an at-a-glance view of which functional regions the variants fall in.
 - **POS row**: Physical positions of each variant site.
-- **ALLELE row**: The alternate allele at each position. Each unique allele is assigned a color from the ColorBrewer Set2 palette. Text color adapts automatically — white on dark backgrounds, dark on light — via luminance-aware contrast calculation.
-- **Haplotype rows** (H001, H002, ...): Each row represents one distinct haplotype pattern. The haplotype name is bold at 1.5× font size. Cells show the allele carried at each position, colored by the allele palette. Empty cells indicate the reference allele.
-- **Population columns** (`--population` only): When a population group file is supplied, columns for each population (e.g., wild, landrace, cultivar) show the count of samples in each haplotype. The column background is lightly tinted to visually separate population data from variant data.
+- **ALLELE row**: The alternate allele at each position, color-coded by allele identity.
+- **Haplotype rows** (H001, H002, ...): Each row represents one distinct haplotype pattern. Cells show the allele carried at each position. Empty cells indicate the reference allele.
+- **Population columns** (`--population` only): Columns for each population (e.g., wild, landrace, cultivar) showing sample counts per haplotype.
 - **n/N column**: Frequency of each haplotype as count/total.
-- **SnpEff-style legend** (`--gff` only): Displayed at the bottom when GFF annotation is active. Shows only functional category colors (CDS, UTR, exon, intron, intergenic) — not allele colors — keeping the legend compact and focused on functional interpretation.
+- **SnpEff-style legend** (`--gff` only): Legend at the bottom showing functional category colors (CDS, UTR, exon, intron, intergenic).
 - **Indel footnotes**: Multi-allele indels (e.g., `T/A,GG`) are annotated with superscript markers; full sequences are explained in the footnote area.
 
 ### Haplotype Geographic Distribution
@@ -60,9 +60,9 @@ The haplotype summary table displays all identified haplotypes across variant po
 
 The geographic distribution map overlays haplotype composition pie charts onto a base map, revealing spatial patterns of haplotype variation across sampling locations.
 
-- **Base map**: Province-level boundary polygons rendered from GeoJSON (China via Aliyun DataV API). Light fill with thin grey borders provides geographic context without competing with the data layer.
-- **Pie charts**: At each sampling location, a pie chart shows haplotype composition. Each slice represents one haplotype, colored by the global palette. White edges separate slices for clarity.
-- **√ frequency scaling**: Symbol radius is proportional to √(total sample count), matching R's `symbol.lim` logic. This ensures visual area — not diameter — scales linearly with sample size. The `symbol_lim` parameter controls the min/max radius range.
+- **Base map**: Province-level boundary polygons from GeoJSON (China via Aliyun DataV API).
+- **Pie charts**: At each sampling location, a pie chart shows haplotype composition. Each slice represents one haplotype.
+- **√ frequency scaling**: Symbol size proportional to √(total sample count), matching R's `symbol.lim` logic.
 - **Count labels**: The total sample count at each location is displayed at the center of each pie chart.
 - **Coordinate axes**: Longitude (x) and Latitude (y) with degree tick marks in muted grey.
 - **Legend**: Haplotype color legend in the upper-left corner identifies each haplotype.
