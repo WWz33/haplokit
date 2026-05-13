@@ -30,7 +30,7 @@
    - `python -m pip install -U pip`
    - `python -m pip install dist/*.tar.gz`
    - `REPO_ROOT=$PWD && TMP_DIR=$(mktemp -d) && cd "$TMP_DIR"`
-   - `haptools view "$REPO_ROOT/inst/extdata/var.sorted.vcf.gz" -r scaffold_1:4300-5000 --output-file smoke_out`
+   - `haptools view "$REPO_ROOT/data/var.sorted.vcf.gz" -r scaffold_1:4300-5000 --output-file smoke_out`
    - `test -f smoke_out/hapresult.tsv && test -f smoke_out/hap_summary.tsv`
 4. No default runtime/CI lane depends on R.
 

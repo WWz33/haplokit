@@ -65,5 +65,5 @@ jobs:
           python -m pip install "$REPO_ROOT"/dist/*.tar.gz
           cd "$TMP_DIR"
           python -c "from pathlib import Path; import haptools; assert (Path(haptools.__file__).resolve().parent / '_bin' / 'haptools_cpp').exists()"
-          haptools view "$REPO_ROOT/inst/extdata/var.sorted.vcf.gz" -r scaffold_1:4300-5000 --output-file smoke_out
+          haptools view "$REPO_ROOT/data/var.sorted.vcf.gz" -r scaffold_1:4300-5000 --output-file smoke_out
           python -c "from pathlib import Path; assert (Path('smoke_out') / 'hapresult.tsv').exists(); assert (Path('smoke_out') / 'hap_summary.tsv').exists()"

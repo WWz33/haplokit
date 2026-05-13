@@ -8,7 +8,7 @@
 namespace {
 
 int run() {
-    haptools::VcfReader reader("inst/extdata/var.sorted.vcf.gz");
+    haptools::VcfReader reader("data/var.sorted.vcf.gz");
 
     const auto region_data = reader.fetch(haptools::parse_region("scaffold_1:4300-5000"));
     haptools::ViewOptions strict_region;

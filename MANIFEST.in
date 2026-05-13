@@ -7,7 +7,7 @@ recursive-include cmake *.cmake
 recursive-include deps/htslib *
 recursive-include src/cpp *.cpp *.h
 recursive-include tests/cpp *.cpp
-recursive-include inst/extdata *
+recursive-include data *
 recursive-include docs/specs *.md
 
 prune deps/htslib/.git

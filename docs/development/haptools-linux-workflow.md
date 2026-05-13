@@ -61,7 +61,7 @@ ctest --test-dir build-wsl --output-on-failure
 
 ```bash
 HAPTOOLS_CPP_BIN=$PWD/build-wsl/haptools_cpp \
-python -m haptools.cli view inst/extdata/var.sorted.vcf.gz \
+python -m haptools.cli view data/var.sorted.vcf.gz \
   -r scaffold_1:4300-5000 \
   --plot \
   --output-file out
