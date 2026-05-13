@@ -1,0 +1,45 @@
+# C++ build
+build*/
+cmake-build-*/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+*.egg
+.eggs/
+
+# Virtual environments
+.venv/
+.venv-*/
+
+# pytest / test artifacts
+.pytest_cache/
+out*/
+test_output/
+
+# R
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+renv/
+
+# Local tool configs
+.omc/
+.claude/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Exclude geneHapR (legacy R package, not shipped)
+geneHapR/
+
+# Stray outputs
+*.tmp

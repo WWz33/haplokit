@@ -1,0 +1,591 @@
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Iterable
+
+from haptools.plot import plot_hap_distribution, plot_hap_table, read_hap_summary_tsv, read_popgroup
+
+
+def _region_value(value: str) -> str:
+    if ":" not in value:
+        raise argparse.ArgumentTypeError("region must look like chr:start-end or chr:pos")
+    chrom, coords = value.split(":", 1)
+    if not chrom or not coords:
+        raise argparse.ArgumentTypeError("region must look like chr:start-end or chr:pos")
+    if "-" in coords:
+        start, end = coords.split("-", 1)
+        if not start.isdigit() or not end.isdigit():
+            raise argparse.ArgumentTypeError("region range must be numeric")
+    else:
+        if not coords.isdigit():
+            raise argparse.ArgumentTypeError("site position must be numeric")
+    return value
+
+
+def _max_diff_value(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("max diff must be a float in [0, 1]") from exc
+    if parsed < 0 or parsed > 1:
+        raise argparse.ArgumentTypeError("max diff must be a float in [0, 1]")
+    return parsed
+
+
+@dataclass(frozen=True)
+class Selector:
+    payload: dict[str, object]
+    region: str
+
+
+class HaptoolsArgumentParser(argparse.ArgumentParser):
+    def parse_args(self, args: list[str] | None = None, namespace=None):
+        ns = super().parse_args(args=args, namespace=namespace)
+        self._validate(ns)
+        return ns
+
+    def _validate(self, ns) -> None:
+        if getattr(ns, "command", None) != "view":
+            return
+        has_region = bool(ns.region)
+        has_regions_file = bool(ns.regions_file)
+        if not has_region and not has_regions_file:
+            self.error("one of -r/--region or -R/--regions-file is required")
+        if has_region and has_regions_file:
+            self.error("-r/--region and -R/--regions-file are mutually exclusive")
+        if has_region:
+            coords = ns.region.split(":", 1)[1]
+            inferred_by = "site" if "-" not in coords else "region"
+            if ns.by != "auto" and ns.by != inferred_by:
+                self.error(f"--by {ns.by} conflicts with -r selector semantics ({inferred_by})")
+            ns.by = inferred_by
+            return
+
+        if ns.by == "site":
+            self.error("--by site is only valid with -r chr:pos")
+        ns.by = "region"
+
+
+def build_parser() -> HaptoolsArgumentParser:
+    parser = HaptoolsArgumentParser(prog="haptools")
+    subparsers = parser.add_subparsers(dest="command")
+
+    view = subparsers.add_parser("view")
+    view.add_argument("input_vcf", nargs="?", default=None)
+    view.add_argument("-r", "--region", dest="region", type=_region_value)
+    view.add_argument("-R", "--regions-file", dest="regions_file")
+    view.add_argument("-S", "--samples-file", dest="samples_file")
+    view.add_argument("--by", choices=["auto", "region", "site"], default="auto")
+    view.add_argument("--impute", action="store_true")
+    view.add_argument("-g", "--gff3", "--gff")
+    view.add_argument("--output", dest="output_mode", choices=["summary", "detail"], default="summary")
+    view.add_argument("--output-format", choices=["tsv", "jsonl"], default="tsv")
+    view.add_argument("--output-file")
+    view.add_argument("--plot", action="store_true")
+    view.add_argument("--plot-format", choices=["png", "pdf", "svg", "tiff"], default="png")
+    view.add_argument("-p", "--population", dest="population_file")
+    view.add_argument("--max-diff", type=_max_diff_value)
+
+    return parser
+
+
+def _selector_payload_from_region(region: str) -> tuple[dict[str, object], str]:
+    chrom, coords = region.split(":", 1)
+    if "-" in coords:
+        start, end = coords.split("-", 1)
+        return (
+            {"type": "region", "chrom": chrom, "start": int(start), "end": int(end)},
+            f"{chrom}:{start}-{end}",
+        )
+    pos = int(coords)
+    return ({"type": "site", "chrom": chrom, "pos": pos}, f"{chrom}:{pos}-{pos}")
+
+
+def _selectors_from_args(args) -> list[Selector]:
+    if args.region:
+        payload, region = _selector_payload_from_region(args.region)
+        return [Selector(payload=payload, region=region)]
+
+    selectors: list[Selector] = []
+    for idx, line in enumerate(Path(args.regions_file).read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        fields = line.split("\t")
+        if len(fields) < 3:
+            raise ValueError("BED rows must have at least 3 columns")
+        chrom, start, end = fields[:3]
+        record_id = fields[3] if len(fields) > 3 and fields[3] else f"row{idx}"
+        selectors.append(
+            Selector(
+                payload={
+                    "type": "bed-record",
+                    "record_id": record_id,
+                    "chrom": chrom,
+                    "start": int(start),
+                    "end": int(end),
+                },
+                region=f"{chrom}:{start}-{end}",
+            )
+        )
+    return selectors
+
+
+def _write_jsonl(rows: Iterable[dict[str, object]], output_file: str | None) -> None:
+    data = "\n".join(json.dumps(row, sort_keys=True) for row in rows) + "\n"
+    if output_file:
+        path = Path(output_file)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(data, encoding="utf-8")
+    else:
+        print(data, end="")
+
+
+def _cpp_backend_path() -> Path:
+    env_path = os.environ.get("HAPTOOLS_CPP_BIN")
+    candidates: list[Path] = []
+    if env_path:
+        candidates.append(Path(env_path))
+
+    package_bin = Path(__file__).resolve().parent / "_bin" / "haptools_cpp"
+    candidates.append(package_bin)
+
+    repo_root = Path(__file__).resolve().parents[1]
+    candidates.extend(
+        [
+            repo_root / "build-wsl" / "haptools_cpp",
+            repo_root / "build" / "haptools_cpp",
+        ]
+    )
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    repo_root = Path(__file__).resolve().parents[1]
+    build_dir = repo_root / "build-wsl"
+    try:
+        subprocess.run(["cmake", "-S", str(repo_root), "-B", str(build_dir)], check=True, cwd=repo_root)
+        subprocess.run(["cmake", "--build", str(build_dir), "--clean-first", "-j1"], check=True, cwd=repo_root)
+    except Exception:
+        pass
+
+    refreshed_candidates = []
+    if env_path:
+        refreshed_candidates.append(Path(env_path))
+    refreshed_candidates.extend([build_dir / "haptools_cpp", repo_root / "build" / "haptools_cpp"])
+    for candidate in refreshed_candidates:
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError(
+        "haptools_cpp backend not found; build the C++ target first or set HAPTOOLS_CPP_BIN"
+    )
+
+
+def _run_cpp_view(selector: Selector, args) -> dict[str, object]:
+    return _run_cpp_view_mode(selector, args, output_mode=args.output_mode)
+
+
+def _run_cpp_view_mode(selector: Selector, args, output_mode: str) -> dict[str, object]:
+    cmd = [
+        str(_cpp_backend_path()),
+        "view-json",
+        str(args.input_vcf),
+        selector.region,
+        "--by",
+        args.by,
+        "--output",
+        output_mode,
+    ]
+    if args.samples_file:
+        cmd.extend(["--samples-file", str(args.samples_file)])
+    if args.impute:
+        cmd.append("--impute")
+    if args.max_diff is not None:
+        cmd.extend(["--max-diff", str(args.max_diff)])
+    if args.gff3:
+        cmd.extend(["--gff3", str(args.gff3)])
+
+    completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if completed.returncode != 0:
+        stderr = completed.stderr.strip()
+        stdout = completed.stdout.strip()
+        detail = stderr or stdout or f"backend exited with code {completed.returncode}"
+        raise RuntimeError(detail)
+    payload = completed.stdout.strip()
+    if not payload:
+        raise RuntimeError("backend produced no output")
+    return json.loads(payload)
+
+
+def _run_cpp_view_batch(args, output_mode: str) -> list[dict[str, object]]:
+    cmd = [
+        str(_cpp_backend_path()),
+        "view-bed-jsonl",
+        str(args.input_vcf),
+        str(args.regions_file),
+        "--output",
+        output_mode,
+    ]
+    if args.samples_file:
+        cmd.extend(["--samples-file", str(args.samples_file)])
+    if args.impute:
+        cmd.append("--impute")
+    if args.max_diff is not None:
+        cmd.extend(["--max-diff", str(args.max_diff)])
+    if args.gff3:
+        cmd.extend(["--gff3", str(args.gff3)])
+
+    completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if completed.returncode != 0:
+        stderr = completed.stderr.strip()
+        stdout = completed.stdout.strip()
+        detail = stderr or stdout or f"backend exited with code {completed.returncode}"
+        raise RuntimeError(detail)
+    lines = [line for line in completed.stdout.splitlines() if line.strip()]
+    return [json.loads(line) for line in lines]
+
+
+def _region_slug(selector: Selector) -> str:
+    selector_type = selector.payload["type"]
+    if selector_type == "site":
+        return f'{selector.payload["chrom"]}_{selector.payload["pos"]}_{selector.payload["pos"]}'
+    return f'{selector.payload["chrom"]}_{selector.payload["start"]}_{selector.payload["end"]}'
+
+
+def _output_base_dir(args) -> Path:
+    if not args.output_file:
+        return Path.cwd()
+    path = Path(args.output_file)
+    if path.suffix:
+        return path.parent if path.parent != Path("") else Path.cwd()
+    return path
+
+
+def _jsonl_output_path(args) -> str | None:
+    if args.output_format != "jsonl":
+        return None
+    if not args.output_file:
+        return None
+    path = Path(args.output_file)
+    if path.suffix:
+        return str(path)
+    return str(path / "result.jsonl")
+
+
+def _output_name_prefix(args) -> str | None:
+    if not args.output_file:
+        return None
+    path = Path(args.output_file)
+    if not path.suffix:
+        return None
+    return path.stem
+
+
+def _plot_path_for_selector(args, selector: Selector, selector_index: int, selector_count: int) -> Path:
+    output_dir = _output_base_dir(args)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    region_slug = "".join(char if char.isalnum() or char in {"_", "-", "."} else "_" for char in _region_slug(selector))
+    fmt = getattr(args, "plot_format", "png")
+    path = output_dir / f"{region_slug}.{fmt}"
+    if selector_count > 1 and path.exists():
+        path = output_dir / f"{region_slug}_{selector_index + 1:03d}.{fmt}"
+    return path
+
+
+def _tsv_paths_for_selector(args, selector: Selector, selector_index: int, selector_count: int) -> tuple[Path, Path]:
+    output_dir = _output_base_dir(args)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    name_prefix = _output_name_prefix(args)
+    region_slug = "".join(char if char.isalnum() or char in {"_", "-", "."} else "_" for char in _region_slug(selector))
+    if selector_count == 1:
+        if name_prefix:
+            summary_name = f"{name_prefix}.hap_summary.tsv"
+            result_name = f"{name_prefix}.hapresult.tsv"
+        else:
+            summary_name = "hap_summary.tsv"
+            result_name = "hapresult.tsv"
+    else:
+        if name_prefix:
+            summary_name = f"{name_prefix}.hap_summary_{region_slug}.tsv"
+            result_name = f"{name_prefix}.hapresult_{region_slug}.tsv"
+        else:
+            summary_name = f"hap_summary_{region_slug}.tsv"
+            result_name = f"hapresult_{region_slug}.tsv"
+
+    summary_path = output_dir / summary_name
+    result_path = output_dir / result_name
+    if selector_count > 1 and summary_path.exists():
+        summary_path = output_dir / f"{summary_path.stem}_{selector_index + 1:03d}{summary_path.suffix}"
+    if selector_count > 1 and result_path.exists():
+        result_path = output_dir / f"{result_path.stem}_{selector_index + 1:03d}{result_path.suffix}"
+    return summary_path, result_path
+
+
+def _state_to_label(state: str, allele: str) -> str:
+    if "/" not in state:
+        return state
+    ref, alt = allele.split("/", 1)
+    alts = [item for item in alt.split(",") if item]
+    left, _right = state.split("/", 1)
+    allele_index = int(left)
+    if allele_index == 0:
+        return ref
+    alt_index = allele_index - 1
+    if 0 <= alt_index < len(alts):
+        return alts[alt_index]
+    return state
+
+
+def _build_hap_label_map(summary_row: dict[str, object]) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for index, item in enumerate(summary_row.get("haplotypes", []), start=1):
+        mapping[item["hap"]] = f"H{index:03d}"
+    return mapping
+
+
+def _info_cells(site_count: int, annotation: dict[str, object] | None) -> list[str]:
+    if site_count <= 0:
+        return []
+    cells = ["."] * site_count
+    if annotation and annotation.get("mode") != "none":
+        cells[0] = _annotation_text(annotation)
+    return cells
+
+
+def _hap_states(hap_value: str, sites: list[dict[str, object]], grouping_method: str) -> list[str]:
+    if grouping_method == "exact" and sites:
+        states = hap_value.split("|")
+        labels: list[str] = []
+        for idx, state in enumerate(states):
+            allele = str(sites[idx]["allele"]) if idx < len(sites) else ""
+            labels.append(_state_to_label(state, allele) if allele else state)
+        return labels
+    return [hap_value]
+
+
+def _write_selector_summary_txt(
+    selector: Selector,
+    summary_row: dict[str, object],
+    detail_row: dict[str, object],
+    out_path: Path,
+) -> None:
+    annotation = summary_row.get("annotation")
+    sites = list(summary_row.get("sites", []))
+    site_chroms = [str(site["chrom"]) for site in sites]
+    site_positions = [str(site["pos"]) for site in sites]
+    site_alleles = [str(site["allele"]) for site in sites]
+    info_cells = _info_cells(len(sites), annotation if isinstance(annotation, dict) else None)
+    lines: list[str] = []
+    lines.append("\t".join(["CHR", *site_chroms, "Haplotypes: ", str(summary_row["haplotype_count"])]))
+    lines.append("\t".join(["POS", *site_positions, "Individuals: ", str(summary_row["sample_count"])]))
+    lines.append("\t".join(["INFO", *info_cells, "Variants: ", str(summary_row["variant_count"])]))
+    lines.append("\t".join(["ALLELE", *site_alleles, "Accession", "freq"]))
+
+    accessions_by_hap: dict[str, list[str]] = {}
+    for item in detail_row.get("accessions", []):
+        accessions_by_hap.setdefault(item["hap"], []).append(item["sample"])
+
+    for index, item in enumerate(summary_row.get("haplotypes", []), start=1):
+        hap_label = f"H{index:03d}"
+        states = _hap_states(item["hap"], sites, str(summary_row["grouping_method"]))
+        accessions = ";".join(accessions_by_hap.get(item["hap"], []))
+        lines.append("\t".join([hap_label, *states, accessions, str(item["count"])]))
+    out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _write_selector_result_txt(
+    selector: Selector,
+    summary_row: dict[str, object],
+    detail_row: dict[str, object],
+    out_path: Path,
+) -> None:
+    annotation = summary_row.get("annotation")
+    sites = list(summary_row.get("sites", []))
+    site_chroms = [str(site["chrom"]) for site in sites]
+    site_positions = [str(site["pos"]) for site in sites]
+    site_alleles = [str(site["allele"]) for site in sites]
+    info_cells = _info_cells(len(sites), annotation if isinstance(annotation, dict) else None)
+    lines: list[str] = []
+    lines.append("\t".join(["CHR", *site_chroms, "Haplotypes: ", str(summary_row["haplotype_count"])]))
+    lines.append("\t".join(["POS", *site_positions, "Individuals: ", str(summary_row["sample_count"])]))
+    lines.append("\t".join(["INFO", *info_cells, "Variants: ", str(summary_row["variant_count"])]))
+    lines.append("\t".join(["ALLELE", *site_alleles, "Accession"]))
+
+    hap_label_map = _build_hap_label_map(summary_row)
+    for item in detail_row.get("accessions", []):
+        hap_label = hap_label_map.get(item["hap"], item["hap"])
+        states = _hap_states(item["hap"], sites, str(summary_row["grouping_method"]))
+        lines.append("\t".join([hap_label, *states, str(item["sample"])]))
+    out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _selector_span(selector: Selector) -> tuple[str, int, int]:
+    selector_type = selector.payload["type"]
+    chrom = str(selector.payload["chrom"])
+    if selector_type == "site":
+        pos = int(selector.payload["pos"])
+        return chrom, pos, pos
+    return chrom, int(selector.payload["start"]), int(selector.payload["end"])
+
+
+def _annotation_text(annotation: dict[str, object]) -> str:
+    mode = annotation.get("mode")
+    if mode == "overlap":
+        return str(annotation.get("id", "NA"))
+    if mode == "nearest":
+        return f'{annotation.get("id", "NA")}:{annotation.get("distance", "NA")}'
+    return "NA"
+
+
+def _write_gff_annotation_table(rows: list[dict[str, object]], selectors: list[Selector], args) -> Path:
+    output_dir = _output_base_dir(args)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    out_path = output_dir / "gff_ann_summary.tsv"
+    lines = ["chr\tstart\tend\tann"]
+    for selector, row in zip(selectors, rows):
+        chrom, start, end = _selector_span(selector)
+        annotation = row.get("annotation", {"mode": "none"})
+        lines.append(f"{chrom}\t{start}\t{end}\t{_annotation_text(annotation)}")
+    out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return out_path
+
+
+def _compose_row(
+    selector: Selector,
+    args,
+    backend_row: dict[str, object],
+) -> dict[str, object]:
+    row: dict[str, object] = {
+        "grouping_mode": backend_row["grouping_mode"],
+        "grouping_method": backend_row["grouping_method"],
+        "output_mode": backend_row["output_mode"],
+        "imputed_ref": backend_row["imputed_ref"],
+        "plot_requested": bool(args.plot),
+        "selector": selector.payload,
+        "gff3_enabled": bool(args.gff3),
+        "max_diff": backend_row["max_diff"],
+        "variant_count": backend_row["variant_count"],
+        "sample_count": backend_row["sample_count"],
+        "haplotype_count": backend_row["haplotype_count"],
+        "sites": backend_row.get("sites", []),
+    }
+    if args.plot:
+        row["plot_backend"] = "python"
+
+    if args.output_mode == "summary":
+        row["haplotypes"] = backend_row["haplotypes"]
+    else:
+        row["accessions"] = backend_row["accessions"]
+
+    if "annotation" in backend_row:
+        row["annotation"] = backend_row["annotation"]
+
+    return row
+
+
+def _write_plot_artifacts(
+    args,
+    selectors: list[Selector],
+    summary_rows: list[dict[str, object]],
+    detail_rows: list[dict[str, object]],
+) -> list[dict[str, str]]:
+    written: list[dict[str, str]] = []
+    for idx, selector in enumerate(selectors):
+        summary_row = summary_rows[idx]
+        detail_row = detail_rows[idx]
+
+        summary_path, result_path = _tsv_paths_for_selector(args, selector, idx, len(selectors))
+        _write_selector_summary_txt(selector, summary_row, detail_row, summary_path)
+        _write_selector_result_txt(selector, summary_row, detail_row, result_path)
+        artifact_paths: dict[str, str] = {
+            "hap_summary_file": str(summary_path.resolve()),
+            "hapresult_file": str(result_path.resolve()),
+        }
+        artifact_paths["summary_file"] = artifact_paths["hap_summary_file"]
+
+        if args.plot:
+            pdf_path = _plot_path_for_selector(args, selector, idx, len(selectors))
+            summary_table = read_hap_summary_tsv(summary_path)
+            gene_name = ""
+            ann = summary_rows[idx].get("annotation")
+            if isinstance(ann, dict) and ann.get("mode") != "none":
+                gene_name = str(ann.get("id", ""))
+            pop_data = None
+            if args.population_file:
+                pop_data = read_popgroup(args.population_file)
+            gff_path = str(args.gff3) if args.gff3 else None
+            artifact_paths["plot_file"] = str(plot_hap_table(summary_table, pdf_path, pop_data=pop_data, gff_path=gff_path, title=gene_name, fmt=args.plot_format))
+        written.append(artifact_paths)
+
+    return written
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.command != "view":
+        parser.error("a subcommand is required")
+    selectors = _selectors_from_args(args)
+    if args.output_format == "tsv":
+        if args.regions_file:
+            summary_rows = _run_cpp_view_batch(args, "summary")
+            detail_rows = _run_cpp_view_batch(args, "detail")
+        else:
+            summary_rows = [_run_cpp_view_mode(selector, args, "summary") for selector in selectors]
+            detail_rows = [_run_cpp_view_mode(selector, args, "detail") for selector in selectors]
+
+        if len(summary_rows) != len(selectors) or len(detail_rows) != len(selectors):
+            raise RuntimeError("backend row count did not match selector count")
+
+        _write_plot_artifacts(args, selectors, summary_rows, detail_rows)
+
+        if args.gff3:
+            rows = [{"annotation": summary_rows[idx].get("annotation", {"mode": "none"})} for idx in range(len(selectors))]
+            _write_gff_annotation_table(rows, selectors, args)
+        return 0
+
+    if args.regions_file:
+        backend_rows = _run_cpp_view_batch(args, args.output_mode)
+        if len(backend_rows) != len(selectors):
+            raise RuntimeError("backend row count did not match selector count")
+    else:
+        backend_rows = [_run_cpp_view(selector, args) for selector in selectors]
+
+    rows = [
+        _compose_row(
+            selector,
+            args,
+            backend_row=backend_rows[index],
+        )
+        for index, selector in enumerate(selectors)
+    ]
+
+    if args.plot:
+        if args.regions_file:
+            summary_rows = _run_cpp_view_batch(args, "summary")
+            detail_rows = _run_cpp_view_batch(args, "detail")
+        else:
+            summary_rows = [_run_cpp_view_mode(selector, args, "summary") for selector in selectors]
+            detail_rows = [_run_cpp_view_mode(selector, args, "detail") for selector in selectors]
+
+        written = _write_plot_artifacts(args, selectors, summary_rows, detail_rows)
+        if len(written) != len(rows):
+            raise RuntimeError("plot artifact count did not match selector count")
+        for idx, row in enumerate(rows):
+            row.update(written[idx])
+
+    if args.gff3:
+        gff_summary = _write_gff_annotation_table(rows, selectors, args)
+        for row in rows:
+            row["gff_summary_file"] = str(gff_summary.resolve())
+    _write_jsonl(rows, _jsonl_output_path(args))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,14 @@
+include README.md
+include LICENSE
+include CMakeLists.txt
+
+recursive-include haptools *.py
+recursive-include cmake *.cmake
+recursive-include deps/htslib *
+recursive-include src/cpp *.cpp *.h
+recursive-include tests/cpp *.cpp
+recursive-include inst/extdata *
+recursive-include docs/specs *.md
+
+prune deps/htslib/.git
+prune deps/htslib/htscodecs/.git
