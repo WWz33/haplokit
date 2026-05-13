@@ -1,0 +1,25 @@
+# Build artifacts
+gffsub
+*.o
+*.a
+*.so
+*.dylib
+
+# Build directories
+build/
+dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test output
+test.gff
+*.output
