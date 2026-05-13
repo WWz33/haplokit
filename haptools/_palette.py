@@ -2,22 +2,7 @@ from __future__ import annotations
 
 from matplotlib.patches import Patch
 
-# ── Mandatory Nature-style rcParams ─────────────────────────────────────────
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-
-plt.rcParams.update({
-    "font.family": "sans-serif",
-    "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans", "Liberation Sans"],
-    "svg.fonttype": "none",       # text as <text> nodes
-    "pdf.fonttype": 42,           # editable TrueType in PDF
-    "axes.spines.right": False,
-    "axes.spines.top": False,
-    "legend.frameon": False,
-})
-
-# ColorBrewer Set2 qualitative — print-friendly, colorblind-safe
+# ── ColorBrewer Set2 qualitative — print-friendly, colorblind-safe
 PALETTE = [
     "#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3",
     "#a6d854", "#ffd92f", "#e5c494", "#b3b3b3",
@@ -46,11 +31,32 @@ FUNC_COLORS = {
 
 GOLDEN = 0.618
 
+_MPL_INITIALIZED = False
+
+
+def _ensure_mpl():
+    global _MPL_INITIALIZED
+    if _MPL_INITIALIZED:
+        return
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt  # noqa: F401
+    plt.rcParams.update({
+        "font.family": "sans-serif",
+        "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans", "Liberation Sans"],
+        "svg.fonttype": "none",
+        "pdf.fonttype": 42,
+        "axes.spines.right": False,
+        "axes.spines.top": False,
+        "legend.frameon": False,
+    })
+    _MPL_INITIALIZED = True
+
 
 def is_dark(hex_color: str, threshold: float = 0.5) -> bool:
     """Return True if hex color is dark (use white text)."""
-    c = hex_color.lstrip("#")
-    r, g, b = int(c[0:2], 16) / 255, int(c[2:4], 16) / 255, int(c[4:6], 16) / 255
+    from matplotlib.colors import to_rgb
+    r, g, b = to_rgb(hex_color)
     return (0.299 * r + 0.587 * g + 0.114 * b) < threshold
 
 
@@ -68,15 +74,11 @@ _FMT_MAP = {".svg": "svg", ".pdf": "pdf", ".png": "png", ".tiff": "tiff"}
 
 
 def save_figure(fig, output_path: str | Path, dpi: int = 600, fmt: str | None = None) -> Path:
-    """Save figure in requested format (default png from path suffix or png).
-
-    Args:
-        fig: matplotlib Figure.
-        output_path: Output file path; suffix determines format if fmt is None.
-        dpi: Raster resolution (png/tiff).
-        fmt: Override format: 'svg', 'pdf', 'png', 'tiff'.
-    """
+    """Save figure in requested format (default png from path suffix or png)."""
     from pathlib import Path
+    _ensure_mpl()
+    import matplotlib.pyplot as plt
+
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
 

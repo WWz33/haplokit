@@ -88,18 +88,14 @@ def transform_for_display(
     if not rows:
         return rows, ""
 
-    # ── Extract region info from CHR/POS rows before removal ──
+    # ── Single-pass: extract CHR, POS, ALLELE row info ──
     chrom = ""
     positions: list[str] = []
     total_ind = ""
-    _acc_col_early: int | None = None
-    for row in rows:
-        if row and row[0] == "ALLELE":
-            for i, cell in enumerate(row):
-                if cell.strip() == "Accession":
-                    _acc_col_early = i
-                    break
-            break
+    acc_col: int | None = None
+    freq_col: int | None = None
+    allele_row_done = False
+
     for row in rows:
         if not row:
             continue
@@ -110,22 +106,19 @@ def transform_for_display(
                 cs = cell.strip()
                 if cs.startswith("Individuals"):
                     total_ind = row[i + 1].strip() if i + 1 < len(row) else ""
-                elif cs.isdigit() and i < (_acc_col_early or len(row)):
+                elif cs.isdigit():
                     positions.append(cs)
+        elif row[0] == "ALLELE" and not allele_row_done:
+            for i, cell in enumerate(row):
+                if cell.strip() == "Accession":
+                    acc_col = i
+            if len(row) > 1 and row[-1].strip() == "freq":
+                freq_col = len(row) - 1
+            allele_row_done = True
 
     region_title = ""
     if chrom and positions:
         region_title = f"{chrom}:{min(positions)}-{max(positions)}"
-
-    # ── Locate Accession column ──
-    acc_col: int | None = None
-    for row in rows:
-        if row and row[0] == "ALLELE":
-            for i, cell in enumerate(row):
-                if cell.strip() == "Accession":
-                    acc_col = i
-                    break
-            break
 
     # ── Population info ──
     pop_names: list[str] = []
@@ -134,14 +127,6 @@ def transform_for_display(
         pop_counts = Counter(pop_data.values())
         pop_names = sorted(pop_counts.keys())
         pop_totals = dict(pop_counts)
-
-    # ── Find freq column ──
-    freq_col: int | None = None
-    for row in rows:
-        if row and row[0] == "ALLELE":
-            if len(row) > 1 and row[-1].strip() == "freq":
-                freq_col = len(row) - 1
-            break
 
     # ── Transform rows ──
     new_rows: list[list[str]] = []

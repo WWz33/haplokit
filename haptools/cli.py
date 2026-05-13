@@ -8,8 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-from haptools.plot import plot_hap_distribution, plot_hap_table, read_hap_summary_tsv, read_popgroup
-
 
 def _region_value(value: str) -> str:
     if ":" not in value:
@@ -190,6 +188,25 @@ def _run_cpp_view(selector: Selector, args) -> dict[str, object]:
     return _run_cpp_view_mode(selector, args, output_mode=args.output_mode)
 
 
+def _append_common_args(cmd: list[str], args) -> None:
+    if args.samples_file:
+        cmd.extend(["--samples-file", str(args.samples_file)])
+    if args.impute:
+        cmd.append("--impute")
+    if args.max_diff is not None:
+        cmd.extend(["--max-diff", str(args.max_diff)])
+    if args.gff3:
+        cmd.extend(["--gff3", str(args.gff3)])
+
+
+def _check_backend_result(completed: subprocess.CompletedProcess) -> None:
+    if completed.returncode != 0:
+        stderr = completed.stderr.strip()
+        stdout = completed.stdout.strip()
+        detail = stderr or stdout or f"backend exited with code {completed.returncode}"
+        raise RuntimeError(detail)
+
+
 def _run_cpp_view_mode(selector: Selector, args, output_mode: str) -> dict[str, object]:
     cmd = [
         str(_cpp_backend_path()),
@@ -201,21 +218,10 @@ def _run_cpp_view_mode(selector: Selector, args, output_mode: str) -> dict[str, 
         "--output",
         output_mode,
     ]
-    if args.samples_file:
-        cmd.extend(["--samples-file", str(args.samples_file)])
-    if args.impute:
-        cmd.append("--impute")
-    if args.max_diff is not None:
-        cmd.extend(["--max-diff", str(args.max_diff)])
-    if args.gff3:
-        cmd.extend(["--gff3", str(args.gff3)])
+    _append_common_args(cmd, args)
 
     completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    if completed.returncode != 0:
-        stderr = completed.stderr.strip()
-        stdout = completed.stdout.strip()
-        detail = stderr or stdout or f"backend exited with code {completed.returncode}"
-        raise RuntimeError(detail)
+    _check_backend_result(completed)
     payload = completed.stdout.strip()
     if not payload:
         raise RuntimeError("backend produced no output")
@@ -231,21 +237,10 @@ def _run_cpp_view_batch(args, output_mode: str) -> list[dict[str, object]]:
         "--output",
         output_mode,
     ]
-    if args.samples_file:
-        cmd.extend(["--samples-file", str(args.samples_file)])
-    if args.impute:
-        cmd.append("--impute")
-    if args.max_diff is not None:
-        cmd.extend(["--max-diff", str(args.max_diff)])
-    if args.gff3:
-        cmd.extend(["--gff3", str(args.gff3)])
+    _append_common_args(cmd, args)
 
     completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    if completed.returncode != 0:
-        stderr = completed.stderr.strip()
-        stdout = completed.stdout.strip()
-        detail = stderr or stdout or f"backend exited with code {completed.returncode}"
-        raise RuntimeError(detail)
+    _check_backend_result(completed)
     lines = [line for line in completed.stdout.splitlines() if line.strip()]
     return [json.loads(line) for line in lines]
 
@@ -255,6 +250,10 @@ def _region_slug(selector: Selector) -> str:
     if selector_type == "site":
         return f'{selector.payload["chrom"]}_{selector.payload["pos"]}_{selector.payload["pos"]}'
     return f'{selector.payload["chrom"]}_{selector.payload["start"]}_{selector.payload["end"]}'
+
+
+def _sanitized_slug(selector: Selector) -> str:
+    return "".join(char if char.isalnum() or char in {"_", "-", "."} else "_" for char in _region_slug(selector))
 
 
 def _output_base_dir(args) -> Path:
@@ -289,7 +288,7 @@ def _output_name_prefix(args) -> str | None:
 def _plot_path_for_selector(args, selector: Selector, selector_index: int, selector_count: int) -> Path:
     output_dir = _output_base_dir(args)
     output_dir.mkdir(parents=True, exist_ok=True)
-    region_slug = "".join(char if char.isalnum() or char in {"_", "-", "."} else "_" for char in _region_slug(selector))
+    region_slug = _sanitized_slug(selector)
     fmt = getattr(args, "plot_format", "png")
     path = output_dir / f"{region_slug}.{fmt}"
     if selector_count > 1 and path.exists():
@@ -301,7 +300,7 @@ def _tsv_paths_for_selector(args, selector: Selector, selector_index: int, selec
     output_dir = _output_base_dir(args)
     output_dir.mkdir(parents=True, exist_ok=True)
     name_prefix = _output_name_prefix(args)
-    region_slug = "".join(char if char.isalnum() or char in {"_", "-", "."} else "_" for char in _region_slug(selector))
+    region_slug = _sanitized_slug(selector)
     if selector_count == 1:
         if name_prefix:
             summary_name = f"{name_prefix}.hap_summary.tsv"
@@ -509,6 +508,8 @@ def _write_plot_artifacts(
         artifact_paths["summary_file"] = artifact_paths["hap_summary_file"]
 
         if args.plot:
+            from haptools.plot import plot_hap_table, read_hap_summary_tsv, read_popgroup
+
             pdf_path = _plot_path_for_selector(args, selector, idx, len(selectors))
             summary_table = read_hap_summary_tsv(summary_path)
             gene_name = ""

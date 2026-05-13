@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon, Wedge, Patch
 from matplotlib.collections import PatchCollection
 
-from ._palette import PALETTE, save_figure
+from ._palette import PALETTE, allele_palette, make_legend_handles, save_figure
 
 # GeoJSON sources keyed by database name
 _GEO_SOURCES: dict[str, str] = {
@@ -83,8 +83,9 @@ def plot_hap_distribution(
 
     n_haps = len(hap_names)
     if hap_colors is None:
-        hap_colors = [PALETTE[i % len(PALETTE)] for i in range(n_haps)]
-    color_map = dict(zip(hap_names, hap_colors))
+        color_map = allele_palette(hap_names)
+    else:
+        color_map = dict(zip(hap_names, hap_colors))
 
     # Aggregate samples by (lon, lat)
     loc_data: dict[tuple[float, float], dict[str, int]] = {}
@@ -193,10 +194,7 @@ def plot_hap_distribution(
             )
 
     # ── Legend ──
-    handles = [
-        Patch(facecolor=color_map[h], edgecolor="#999", label=h)
-        for h in hap_names
-    ]
+    handles = make_legend_handles(color_map)
     ax.legend(handles=handles, fontsize=legend_font_size, loc="upper left", framealpha=0.9)
 
     if title:
