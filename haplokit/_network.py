@@ -19,15 +19,14 @@ Reference:
 from __future__ import annotations
 
 import math
-import random
 from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
 from matplotlib.patches import Circle, Patch, Wedge
 
 from ._palette import PALETTE, save_figure
+from .network import compute_tcs_network
 
 
 # ---------------------------------------------------------------------------
@@ -55,29 +54,14 @@ def _build_tcs_network(
     dist: np.ndarray,
     n_real: int,
 ) -> tuple[list[tuple[int, int, int]], int]:
-    """Build a TCS-style minimum-step network.
+    """Build TCS-style minimum-step network.
 
-    Algorithm (faithful to popart/TCS.cpp behavior, simplified):
-
-    1. Sort all candidate edges by distance ascending.
-    2. Greedily accept edges that connect distinct components (union-find);
-       this gives an MST-of-haplotypes scaffold.
-    3. When the connecting edge weight > 1, replace it with a chain of
-       length-1 edges through `weight - 1` newly inserted median vertices —
-       these represent inferred (unsampled) ancestral haplotypes.
-    4. After the scaffold connects all components, add any same-distance
-       reticulating edges (loops, w == 1) that don't introduce a shortcut
-       through the existing structure — this is the TCS reticulation step.
-
-    Returns:
-        (edges, n_total) where edges is a list of (u, v, weight_in_mutations)
-        with weight == 1 for all edges that go through medians,
-        and n_total >= n_real is the total vertex count (real + median).
+    Preserved as archived Python reference inside active frontend module.
+    Production path now uses C++ backend via `compute_tcs_network()`.
     """
     n = n_real
     edges: list[tuple[int, int, int]] = []
 
-    # candidate pairs sorted by distance
     pairs: list[tuple[int, int, int]] = [
         (int(dist[i, j]), i, j)
         for i in range(n)
@@ -86,7 +70,6 @@ def _build_tcs_network(
     ]
     pairs.sort()
 
-    # union-find
     parent = list(range(n))
 
     def find(x: int) -> int:
@@ -95,9 +78,7 @@ def _build_tcs_network(
             x = parent[x]
         return x
 
-    next_idx = n  # next vertex id for median nodes
-
-    # Phase 1: scaffold (insert medians for w>1 connectors)
+    next_idx = n
     accepted_pairs: set[tuple[int, int]] = set()
     for w, i, j in pairs:
         if find(i) == find(j):
@@ -108,7 +89,6 @@ def _build_tcs_network(
         if w == 1:
             edges.append((i, j, 1))
         else:
-            # insert (w - 1) intermediate medians: i — m1 — m2 — ... — j
             prev = i
             for _ in range(w - 1):
                 m = next_idx
@@ -117,18 +97,12 @@ def _build_tcs_network(
                 prev = m
             edges.append((prev, j, 1))
 
-    # Phase 2: reticulations — same-distance loop closures.
-    # For each unaccepted pair (i, j) with distance d, add a direct edge IF
-    # adding it doesn't create a shortcut (i.e., d <= current shortest path
-    # i↔j in the current graph). To avoid the cost of repeated shortest-path
-    # queries, we use a BFS-based check (graph is small for typical inputs).
     adj: dict[int, list[int]] = {}
     for u, v, _ in edges:
         adj.setdefault(u, []).append(v)
         adj.setdefault(v, []).append(u)
 
     def bfs_dist(s: int, t: int, cap: int) -> int:
-        """Return shortest unweighted path length s→t, capped at `cap`+1."""
         if s == t:
             return 0
         visited = {s}
@@ -151,19 +125,13 @@ def _build_tcs_network(
     for w, i, j in pairs:
         if (i, j) in accepted_pairs:
             continue
-        if w < 1:
-            continue
-        # only add if equal-cost alternate path exists (reticulation), and only
-        # for short bridges to avoid clutter
-        if w > 3:
+        if w < 1 or w > 3:
             continue
         existing = bfs_dist(i, j, w)
-        if existing == w:
-            if w == 1:
-                edges.append((i, j, 1))
-                adj.setdefault(i, []).append(j)
-                adj.setdefault(j, []).append(i)
-            # for w>1 we already have an equal path; don't add a parallel chain
+        if existing == w and w == 1:
+            edges.append((i, j, 1))
+            adj.setdefault(i, []).append(j)
+            adj.setdefault(j, []).append(i)
 
     return edges, next_idx
 
@@ -386,8 +354,18 @@ def plot_hap_network(
     counts = np.asarray(hap_counts, dtype=float)
 
     # ---- Build network -----------------------------------------------------
-    dist = _pairwise_distance_matrix(hap_strings)
-    edges, n_total = _build_tcs_network(dist, n)
+    samples = [[name] * max(int(count), 1) for name, count in zip(hap_names, hap_counts)]
+    network = compute_tcs_network(hap_strings, samples)
+    node_index = {node["id"]: idx for idx, node in enumerate(network["nodes"])}
+    edges = [
+        (
+            node_index[edge["source"]],
+            node_index[edge["target"]],
+            max(int(edge.get("weight", 1)), 1),
+        )
+        for edge in network["edges"]
+    ]
+    n_total = len(network["nodes"])
 
     # ---- Node radii: diameter ∝ sqrt(freq), like popart -------------------
     # Real nodes: radius from frequency. Median nodes: small fixed black dots.
@@ -493,48 +471,52 @@ def plot_hap_network(
         )
         leg._legend_box.align = "left"
 
-    # ---- Size legend (top strip, marker-size based) -----------------------
+    # ---- Size legend (PopART concentric circles style) ---------------------
     unique_counts = sorted({int(c) for c in hap_counts})
     if len(unique_counts) > 1:
-        if len(unique_counts) <= 3:
-            sample_vals = unique_counts
-        else:
-            lo, hi = unique_counts[0], unique_counts[-1]
-            mid = int(round((lo + hi) / 2))
-            sample_vals = sorted({lo, mid, hi})
+        hi = unique_counts[-1]
+        lo = unique_counts[0]
 
-        # Match the radius scaling used for real nodes
-        raw = np.sqrt(np.asarray(sample_vals, dtype=float))
+        raw_hi = np.sqrt(float(hi))
+        raw_lo = np.sqrt(float(lo))
         scale_factor = np.sqrt(max(counts.max(), 1.0))
-        norm = raw / scale_factor
-        sample_radii_data = r_min + norm * (r_max - r_min)
-        # Convert from data units to area for scatter "s" markers
-        # Pixel size: r_data * data_to_pixels. Use ax.transData for one of the
-        # nodes — points^2 = (pixel_radius * 72/dpi)^2 * pi
-        # Simpler: use a top-axes (fig coords) so size is consistent.
+        r_hi = r_min + (raw_hi / scale_factor) * (r_max - r_min)
+        r_lo = r_min + (raw_lo / scale_factor) * (r_max - r_min)
+
         size_ax = fig.add_axes((0.04, 1.0 - top_strip + 0.005, 0.92, top_strip - 0.02))
         size_ax.set_xlim(0, 1)
         size_ax.set_ylim(0, 1)
         size_ax.axis("off")
-        # Center horizontally
-        n_samples = len(sample_vals)
-        x_centers = np.linspace(0.30, 0.70, n_samples) if n_samples > 1 else [0.5]
-        # Marker size: scatter s is in points^2; map relative radius -> points
-        max_pt = 18.0
-        marker_pts = np.maximum(4.0, max_pt * (sample_radii_data / r_max))
-        size_ax.scatter(
-            x_centers, [0.55] * n_samples,
-            s=(marker_pts ** 2),
-            facecolor="#dddddd", edgecolor="#1a1a1a",
-            linewidth=0.7, zorder=2,
-        )
-        for xc, val, mpt in zip(x_centers, sample_vals, marker_pts):
-            size_ax.text(xc, 0.10, f"n={val}",
-                         fontsize=legend_font_size,
-                         ha="center", va="top", color="#333")
-        size_ax.text(0.18, 0.55, "Frequency",
-                     fontsize=legend_font_size, ha="right", va="center",
-                     color="#333", fontweight="bold")
+
+        # Normalize to fit legend axes
+        legend_scale = 0.40 / r_hi if r_hi > 0 else 1.0
+        R_hi = r_hi * legend_scale
+        R_lo = r_lo * legend_scale
+
+        cx = 0.50
+        # Large circle centered so bottom touches baseline
+        baseline_y = 0.10
+        cy_hi = baseline_y + R_hi
+
+        # Large circle (N=hi)
+        size_ax.add_patch(plt.Circle(
+            (cx, cy_hi), R_hi,
+            facecolor="none", edgecolor="#1a1a1a",
+            linewidth=0.8, zorder=2,
+        ))
+        # Small circle (N=lo) nested at bottom of large circle
+        cy_lo = baseline_y + R_lo
+        size_ax.add_patch(plt.Circle(
+            (cx, cy_lo), R_lo,
+            facecolor="none", edgecolor="#1a1a1a",
+            linewidth=0.8, zorder=3,
+        ))
+
+        # Labels
+        size_ax.text(cx + R_hi + 0.04, cy_hi, f"N={hi}",
+                     fontsize=legend_font_size, ha="left", va="center", color="#333")
+        size_ax.text(cx + R_lo + 0.04, cy_lo, f"N={lo}",
+                     fontsize=legend_font_size, ha="left", va="center", color="#333")
 
     # Title intentionally NOT rendered (parameter accepted only for compat).
     _ = title

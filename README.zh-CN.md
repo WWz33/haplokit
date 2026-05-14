@@ -261,6 +261,20 @@ C++ 后端（`haplokit_cpp`）处理 VCF 读取和单倍型分组。发现顺序
 - **[htslib](https://github.com/samtools/htslib)** — VCF/BCF 读取，索引随机访问
 - **[gffsub](https://github.com/WWz33/gffsub)** — GFF3/GTF 解析，overlap/nearest-gene 查询
 
+### 网络算法
+
+C++ 实现的单倍型网络算法（MSN、TCS、MJN），支持 SIMD 加速：
+
+- **库**：`libhaplokit_network.a`（C++17）
+- **算法**：MSN（最小生成网络）、TCS（统计简约）、MJN（中间连接）
+- **优化**：AVX2 SIMD Hamming 距离、OpenMP 并行
+- **Python 接口**：`haplokit.network`，自动 C++/Python 回退
+- **可视化**：PopART 风格渲染，饼图节点、突变刻度线、性状图例
+
+![网络算法对比](plotnetwork_3algo.png)
+
+纯 Python 参考实现归档于 `archive/python_reference_implementation/`。
+
 ## 贡献开发
 
 ```bash

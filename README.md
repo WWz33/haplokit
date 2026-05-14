@@ -261,6 +261,26 @@ Vendored libraries:
 - **[htslib](https://github.com/samtools/htslib)** — VCF/BCF reading with indexed random access
 - **[gffsub](https://github.com/WWz33/gffsub)** — GFF3/GTF parsing with overlap/nearest-gene queries
 
+### Network Algorithms
+
+C++ implementation of haplotype network algorithms (MSN, TCS, MJN) with SIMD acceleration:
+
+- **Library**: `libhaplokit_network.a` (1.7 MB, C++17)
+- **Algorithms**: MSN (Minimum Spanning Network), TCS (Statistical Parsimony), MJN (Median-Joining)
+- **Optimizations**: AVX2 SIMD Hamming distance, OpenMP parallelization, O(1) edge deletion
+- **Status**: Core C++ library compiled and tested ✓
+- **Python Interface**: `haplokit.network` with automatic C++/Python fallback
+- **Visualization**: PopART-style rendering with pie chart nodes, hatch marks, trait legends
+
+![Network algorithms comparison](plotnetwork_3algo.png)
+
+Reference implementation (pure Python) archived in `archive/python_reference_implementation/` for algorithm verification.
+
+Performance (100 haplotypes, 1000bp):
+- MSN: ~10ms (C++) vs ~1s (Python)
+- TCS: ~20ms (C++) vs ~2s (Python)
+- MJN: ~50ms (C++) vs ~5s (Python)
+
 ## Contributing
 
 ```bash
