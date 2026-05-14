@@ -3,7 +3,7 @@
 #include <optional>
 #include <string>
 
-namespace haptools {
+namespace haplokit {
 
 struct Region {
     std::string chrom;
@@ -14,4 +14,4 @@ struct Region {
 Region parse_region(const std::string& value);
 bool is_site_region(const Region& region);
 
-}  // namespace haptools
+}  // namespace haplokit

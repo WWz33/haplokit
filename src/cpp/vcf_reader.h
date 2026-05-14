@@ -5,7 +5,7 @@
 
 #include "selector.h"
 
-namespace haptools {
+namespace haplokit {
 
 struct GenotypeCall {
     int allele1 = -1;
@@ -36,4 +36,4 @@ private:
     std::string path_;
 };
 
-}  // namespace haptools
+}  // namespace haplokit

@@ -45,7 +45,7 @@ jobs:
 
       - name: Run Python tests
         run: |
-          HAPTOOLS_CPP_BIN=$PWD/build-wsl/haptools_cpp python -m pytest -q tests/python
+          HAPLOKIT_CPP_BIN=$PWD/build-wsl/haplokit_cpp python -m pytest -q tests/python
 
       - name: Run C++ tests
         run: |
@@ -64,6 +64,6 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install "$REPO_ROOT"/dist/*.tar.gz
           cd "$TMP_DIR"
-          python -c "from pathlib import Path; import haptools; assert (Path(haptools.__file__).resolve().parent / '_bin' / 'haptools_cpp').exists()"
-          haptools view "$REPO_ROOT/data/var.sorted.vcf.gz" -r scaffold_1:4300-5000 --output-file smoke_out
+          python -c "from pathlib import Path; import haplokit; assert (Path(haplokit.__file__).resolve().parent / '_bin' / 'haplokit_cpp').exists()"
+          haplokit view "$REPO_ROOT/data/var.sorted.vcf.gz" -r scaffold_1:4300-5000 --output-file smoke_out
           python -c "from pathlib import Path; assert (Path('smoke_out') / 'hapresult.tsv').exists(); assert (Path('smoke_out') / 'hap_summary.tsv').exists()"

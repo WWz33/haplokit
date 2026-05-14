@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from haptools.plot import plot_hap_table, read_hap_summary_tsv
+from haplokit.plot import plot_hap_table, read_hap_summary_tsv
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_haptools_python_surface_does_not_reference_r_runtime() -> None:
+def test_haplokit_python_surface_does_not_reference_r_runtime() -> None:
     forbidden_tokens = ("Rscript", "rpy2", "plotHapTable(")
-    for file in (ROOT / "haptools").glob("*.py"):
+    for file in (ROOT / "haplokit").glob("*.py"):
         content = file.read_text(encoding="utf-8")
         for token in forbidden_tokens:
             assert token not in content, f"{file} unexpectedly references {token}"

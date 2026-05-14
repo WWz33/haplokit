@@ -7,7 +7,7 @@
 #include "gff_annotator.h"
 #include "vcf_reader.h"
 
-namespace haptools {
+namespace haplokit {
 
 enum class GroupBy {
     Region,
@@ -62,4 +62,4 @@ ViewResult build_view_result(const RegionData& data, const ViewOptions& options)
 std::string serialize_view_result_json(const ViewResult& result);
 std::vector<std::string> load_sample_list(const std::string& path);
 
-}  // namespace haptools
+}  // namespace haplokit

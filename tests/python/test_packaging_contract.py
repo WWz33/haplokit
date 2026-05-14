@@ -9,13 +9,13 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import haptools
+import haplokit
 
 
-def test_pyproject_declares_haptools_console_entrypoint_and_linux_scope() -> None:
+def test_pyproject_declares_haplokit_console_entrypoint_and_linux_scope() -> None:
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'name = "haptools"' in pyproject
-    assert 'haptools = "haptools.cli:main"' in pyproject
+    assert 'name = "haplokit"' in pyproject
+    assert 'haplokit = "haplokit.cli:main"' in pyproject
     assert "Operating System :: POSIX :: Linux" in pyproject
 
 
@@ -29,12 +29,12 @@ def test_project_version_matches_package_version() -> None:
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     match = re.search(r'^version\s*=\s*"([^"]+)"', pyproject, flags=re.MULTILINE)
     assert match is not None
-    assert match.group(1) == haptools.__version__
+    assert match.group(1) == haplokit.__version__
 
 
 def test_module_entrypoint_invokes_cli() -> None:
     completed = subprocess.run(
-        [sys.executable, "-m", "haptools"],
+        [sys.executable, "-m", "haplokit"],
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -46,8 +46,8 @@ def test_module_entrypoint_invokes_cli() -> None:
 
 
 def test_cli_checks_packaged_backend_path() -> None:
-    cli_py = (ROOT / "haptools" / "cli.py").read_text(encoding="utf-8")
-    assert 'Path(__file__).resolve().parent / "_bin" / "haptools_cpp"' in cli_py
+    cli_py = (ROOT / "haplokit" / "cli.py").read_text(encoding="utf-8")
+    assert 'Path(__file__).resolve().parent / "_bin" / "haplokit_cpp"' in cli_py
 
 
 def test_vendored_htscodecs_version_header_is_present_for_sdist_builds() -> None:

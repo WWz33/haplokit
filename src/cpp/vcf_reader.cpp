@@ -10,7 +10,7 @@ extern "C" {
 #include <htslib/vcf.h>
 }
 
-namespace haptools {
+namespace haplokit {
 namespace {
 
 std::vector<std::string> resolve_samples(
@@ -169,4 +169,4 @@ RegionData VcfReader::fetch(const Region& region, const std::vector<std::string>
     return data;
 }
 
-}  // namespace haptools
+}  // namespace haplokit

@@ -1,4 +1,4 @@
-# haptools
+# haplokit
 
 面向 CLI 的单倍型查看工具，提供 bcftools 风格选择器、C++ 后端加速和 Python 绘图。
 
@@ -28,7 +28,7 @@ python -m pip install -e .[test]
 ## 快速开始
 
 ```bash
-haptools view data/var.sorted.vcf.gz -r scaffold_1:4300-5000 --output-file out
+haplokit view data/var.sorted.vcf.gz -r scaffold_1:4300-5000 --output-file out
 ```
 
 该命令会生成：
@@ -70,7 +70,7 @@ haptools view data/var.sorted.vcf.gz -r scaffold_1:4300-5000 --output-file out
 
 ## 与 bcftools 对齐的选择器语义
 
-`haptools view` 采用与 `bcftools` 工作流同形态的选择器词汇。
+`haplokit view` 采用与 `bcftools` 工作流同形态的选择器词汇。
 
 - `-r/--region chr:start-end`：区间选择
 - `-r/--region chr:pos`：单个位点选择
@@ -87,7 +87,7 @@ haptools view data/var.sorted.vcf.gz -r scaffold_1:4300-5000 --output-file out
 
 ## C++ 后端加速
 
-Python CLI 会把核心单倍型分组计算委托给 `haptools_cpp`。
+Python CLI 会把核心单倍型分组计算委托给 `haplokit_cpp`。
 
 ### 供应商依赖库
 
@@ -97,9 +97,9 @@ Python CLI 会把核心单倍型分组计算委托给 `haptools_cpp`。
 
 后端发现顺序：
 
-1. `HAPTOOLS_CPP_BIN`
-2. 打包内二进制：`haptools/_bin/haptools_cpp`
-3. 仓库构建产物：`build-wsl/haptools_cpp`，然后 `build/haptools_cpp`
+1. `HAPLOKIT_CPP_BIN`
+2. 打包内二进制：`haplokit/_bin/haplokit_cpp`
+3. 仓库构建产物：`build-wsl/haplokit_cpp`，然后 `build/haplokit_cpp`
 4. 回退本地构建：`cmake -S . -B build-wsl` 与 `cmake --build build-wsl --clean-first -j1`
 
 若发现与回退构建后仍找不到后端，CLI 会报错退出。
@@ -107,7 +107,7 @@ Python CLI 会把核心单倍型分组计算委托给 `haptools_cpp`。
 ## 命令
 
 ```text
-haptools view <input_vcf> (-r <region> | -R <regions.bed>) [options]
+haplokit view <input_vcf> (-r <region> | -R <regions.bed>) [options]
 ```
 
 `<input_vcf>` 应为已建立索引的 VCF/BCF（`.vcf.gz` + `.tbi`，或 BCF 索引）。
@@ -166,31 +166,31 @@ haptools view <input_vcf> (-r <region> | -R <regions.bed>) [options]
 ### 区间模式（严格精确分组）
 
 ```bash
-haptools view in.vcf.gz -r chr1:1000-2000 --output-file out
+haplokit view in.vcf.gz -r chr1:1000-2000 --output-file out
 ```
 
 ### 单位点模式
 
 ```bash
-haptools view in.vcf.gz -r chr1:1450 --output-file out_site
+haplokit view in.vcf.gz -r chr1:1450 --output-file out_site
 ```
 
 ### BED 批处理 + 样本子集 + 绘图 + 注释
 
 ```bash
-haptools view in.vcf.gz -R regions.bed -S samples.list --plot --gff genes.gff3 --output-file out_bed
+haplokit view in.vcf.gz -R regions.bed -S samples.list --plot --gff genes.gff3 --output-file out_bed
 ```
 
 ### 带群体分组和 PNG 图片
 
 ```bash
-haptools view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --plot --plot-format png --output-file out
+haplokit view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --plot --plot-format png --output-file out
 ```
 
 ### JSONL detail + 近似分组
 
 ```bash
-haptools view in.vcf.gz -r chr1:1000-2000 --max-diff 0.2 --output-format jsonl --output detail --output-file result.jsonl
+haplokit view in.vcf.gz -r chr1:1000-2000 --max-diff 0.2 --output-format jsonl --output detail --output-file result.jsonl
 ```
 
 ## 升级说明
@@ -206,20 +206,20 @@ Linux/WSL 验证流程：
 ```bash
 cmake -S . -B build-wsl
 cmake --build build-wsl -j12
-HAPTOOLS_CPP_BIN=$PWD/build-wsl/haptools_cpp python -m pytest -q tests/python
+HAPLOKIT_CPP_BIN=$PWD/build-wsl/haplokit_cpp python -m pytest -q tests/python
 ctest --test-dir build-wsl --output-on-failure
 ```
 
 参考文档：
 
-- `docs/specs/haptools-view-cli.md`
-- `docs/specs/haptools-result-schema.md`
-- `docs/development/haptools-linux-workflow.md`
+- `docs/specs/haplokit-view-cli.md`
+- `docs/specs/haplokit-result-schema.md`
+- `docs/development/haplokit-linux-workflow.md`
 - `docs/release/pypi-release.md`
 
 ## 致谢
 
-haptools 的设计灵感来自 geneHapR：
+haplokit 的设计灵感来自 geneHapR：
 
 > Zhang, R., Jia, G. & Diao, X. geneHapR: an R package for gene haplotypic statistics and visualization. BMC Bioinformatics 24, 199 (2023). https://doi.org/10.1186/s12859-023-05318-9
 

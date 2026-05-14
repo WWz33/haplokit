@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace haptools {
+namespace haplokit {
 
 struct GeneAnnotation {
     std::string mode;  // "overlap", "nearest", "none"
@@ -33,4 +33,4 @@ private:
     std::unordered_map<std::string, std::vector<GeneRecord>> genes_;
 };
 
-}  // namespace haptools
+}  // namespace haplokit

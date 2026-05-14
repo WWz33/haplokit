@@ -8,13 +8,13 @@
 namespace {
 
 int run() {
-    haptools::VcfReader reader("data/var.sorted.vcf.gz");
+    haplokit::VcfReader reader("data/var.sorted.vcf.gz");
 
-    const auto region_data = reader.fetch(haptools::parse_region("scaffold_1:4300-5000"));
-    haptools::ViewOptions strict_region;
-    strict_region.by = haptools::GroupBy::Region;
-    strict_region.output_mode = haptools::OutputMode::Summary;
-    const auto summary = haptools::build_view_result(region_data, strict_region);
+    const auto region_data = reader.fetch(haplokit::parse_region("scaffold_1:4300-5000"));
+    haplokit::ViewOptions strict_region;
+    strict_region.by = haplokit::GroupBy::Region;
+    strict_region.output_mode = haplokit::OutputMode::Summary;
+    const auto summary = haplokit::build_view_result(region_data, strict_region);
     if (summary.grouping_mode != "strict-region") {
         std::cerr << "unexpected grouping mode: " << summary.grouping_mode << "\n";
         return 1;
@@ -33,11 +33,11 @@ int run() {
         return 1;
     }
 
-    haptools::ViewOptions strict_site;
-    strict_site.by = haptools::GroupBy::Site;
-    strict_site.output_mode = haptools::OutputMode::Detail;
-    const auto site_data = reader.fetch(haptools::parse_region("scaffold_1:4300"));
-    const auto detail = haptools::build_view_result(site_data, strict_site);
+    haplokit::ViewOptions strict_site;
+    strict_site.by = haplokit::GroupBy::Site;
+    strict_site.output_mode = haplokit::OutputMode::Detail;
+    const auto site_data = reader.fetch(haplokit::parse_region("scaffold_1:4300"));
+    const auto detail = haplokit::build_view_result(site_data, strict_site);
     if (detail.grouping_mode != "strict-site") {
         std::cerr << "unexpected site grouping mode: " << detail.grouping_mode << "\n";
         return 1;
@@ -47,17 +47,17 @@ int run() {
         return 1;
     }
 
-    haptools::ViewOptions approx_region;
-    approx_region.by = haptools::GroupBy::Region;
-    approx_region.output_mode = haptools::OutputMode::Summary;
+    haplokit::ViewOptions approx_region;
+    approx_region.by = haplokit::GroupBy::Region;
+    approx_region.output_mode = haplokit::OutputMode::Summary;
     approx_region.max_diff = 0.2;
-    const auto approx = haptools::build_view_result(region_data, approx_region);
+    const auto approx = haplokit::build_view_result(region_data, approx_region);
     if (approx.grouping_mode != "approx-region" || approx.grouping_method != "max-diff") {
         std::cerr << "unexpected approx metadata\n";
         return 1;
     }
 
-    const auto payload = haptools::serialize_view_result_json(summary);
+    const auto payload = haplokit::serialize_view_result_json(summary);
     if (payload.find("\"grouping_mode\":\"strict-region\"") == std::string::npos) {
         std::cerr << "serialized payload missing grouping_mode\n";
         return 1;

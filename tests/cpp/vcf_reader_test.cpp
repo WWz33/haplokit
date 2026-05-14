@@ -19,9 +19,9 @@ int run() {
         throw std::runtime_error("missing test fixture: " + vcf.string());
     }
 
-    haptools::VcfReader reader(vcf.string());
+    haplokit::VcfReader reader(vcf.string());
 
-    const auto region_data = reader.fetch(haptools::parse_region("scaffold_1:4300-5000"));
+    const auto region_data = reader.fetch(haplokit::parse_region("scaffold_1:4300-5000"));
     if (region_data.samples.size() != 37U) {
         std::cerr << "expected 37 samples, got " << region_data.samples.size() << "\n";
         return 1;
@@ -41,7 +41,7 @@ int run() {
         return 1;
     }
 
-    const auto site_data = reader.fetch(haptools::parse_region("scaffold_1:4300"));
+    const auto site_data = reader.fetch(haplokit::parse_region("scaffold_1:4300"));
     if (site_data.variants.size() != 1U) {
         std::cerr << "expected 1 site variant, got " << site_data.variants.size() << "\n";
         return 1;
@@ -51,7 +51,7 @@ int run() {
         return 1;
     }
 
-    const auto subset_data = reader.fetch(haptools::parse_region("scaffold_1:4300-5000"), {"C1", "C5", "C16"});
+    const auto subset_data = reader.fetch(haplokit::parse_region("scaffold_1:4300-5000"), {"C1", "C5", "C16"});
     if (subset_data.samples.size() != 3U) {
         std::cerr << "expected 3 subset samples, got " << subset_data.samples.size() << "\n";
         return 1;

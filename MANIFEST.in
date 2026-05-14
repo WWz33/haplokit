@@ -2,7 +2,7 @@ include README.md
 include LICENSE
 include CMakeLists.txt
 
-recursive-include haptools *.py
+recursive-include haplokit *.py
 recursive-include cmake *.cmake
 recursive-include deps/htslib *
 recursive-include src/cpp *.cpp *.h

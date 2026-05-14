@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from haptools.cli import build_parser, main
+from haplokit.cli import build_parser, main
 
 
 DATA_DIR = ROOT / "inst" / "extdata"

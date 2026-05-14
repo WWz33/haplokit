@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <limits>
 
-namespace haptools {
+namespace haplokit {
 
 bool GffAnnotator::load(const std::string& gff_path) {
     gffsub::GffData data;
@@ -83,4 +83,4 @@ GeneAnnotation GffAnnotator::annotate(const std::string& chrom, int64_t start, i
     return ann;
 }
 
-}  // namespace haptools
+}  // namespace haplokit

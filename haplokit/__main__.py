@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from haptools.cli import main
+from haplokit.cli import main
 
 
 def run() -> int:

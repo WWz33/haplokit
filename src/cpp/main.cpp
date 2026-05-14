@@ -14,9 +14,9 @@ namespace {
 
 struct ParsedViewJsonCommand {
     std::string input_vcf;
-    haptools::Region region;
+    haplokit::Region region;
     std::vector<std::string> samples;
-    haptools::ViewOptions options;
+    haplokit::ViewOptions options;
     std::string gff3_path;
 };
 
@@ -31,13 +31,13 @@ double parse_max_diff(const std::string& value) {
 ParsedViewJsonCommand parse_view_json_command(int argc, char** argv) {
     if (argc < 4) {
         throw std::runtime_error(
-            "usage: haptools_cpp view-json <vcf> <region> [--by region|site] [--samples-file path] "
+            "usage: haplokit_cpp view-json <vcf> <region> [--by region|site] [--samples-file path] "
             "[--impute] [--output summary|detail] [--max-diff x]");
     }
 
     ParsedViewJsonCommand parsed;
     parsed.input_vcf = argv[2];
-    parsed.region = haptools::parse_region(argv[3]);
+    parsed.region = haplokit::parse_region(argv[3]);
 
     for (int idx = 4; idx < argc; ++idx) {
         const std::string arg = argv[idx];
@@ -47,9 +47,9 @@ ParsedViewJsonCommand parse_view_json_command(int argc, char** argv) {
             }
             const std::string value = argv[++idx];
             if (value == "region") {
-                parsed.options.by = haptools::GroupBy::Region;
+                parsed.options.by = haplokit::GroupBy::Region;
             } else if (value == "site") {
-                parsed.options.by = haptools::GroupBy::Site;
+                parsed.options.by = haplokit::GroupBy::Site;
             } else {
                 throw std::runtime_error("unsupported --by value: " + value);
             }
@@ -59,7 +59,7 @@ ParsedViewJsonCommand parse_view_json_command(int argc, char** argv) {
             if (idx + 1 >= argc) {
                 throw std::runtime_error("--samples-file requires a path");
             }
-            parsed.samples = haptools::load_sample_list(argv[++idx]);
+            parsed.samples = haplokit::load_sample_list(argv[++idx]);
             continue;
         }
         if (arg == "--impute") {
@@ -72,11 +72,11 @@ ParsedViewJsonCommand parse_view_json_command(int argc, char** argv) {
             }
             const std::string value = argv[++idx];
             if (value == "summary") {
-                parsed.options.output_mode = haptools::OutputMode::Summary;
+                parsed.options.output_mode = haplokit::OutputMode::Summary;
             } else if (value == "detail") {
-                parsed.options.output_mode = haptools::OutputMode::Detail;
+                parsed.options.output_mode = haplokit::OutputMode::Detail;
             } else if (value == "both") {
-                parsed.options.output_mode = haptools::OutputMode::Both;
+                parsed.options.output_mode = haplokit::OutputMode::Both;
             } else {
                 throw std::runtime_error("unsupported --output value: " + value);
             }
@@ -99,20 +99,20 @@ ParsedViewJsonCommand parse_view_json_command(int argc, char** argv) {
         throw std::runtime_error("unsupported argument: " + arg);
     }
 
-    if (parsed.options.by == haptools::GroupBy::Site && !haptools::is_site_region(parsed.region)) {
+    if (parsed.options.by == haplokit::GroupBy::Site && !haplokit::is_site_region(parsed.region)) {
         throw std::runtime_error("--by site requires a single-position region");
     }
 
     return parsed;
 }
 
-haptools::ViewOptions parse_common_view_options(
+haplokit::ViewOptions parse_common_view_options(
     int argc,
     char** argv,
     int start_index,
     std::vector<std::string>* samples,
     std::string* gff3_path) {
-    haptools::ViewOptions options;
+    haplokit::ViewOptions options;
     if (samples == nullptr) {
         throw std::runtime_error("samples output is required");
     }
@@ -122,7 +122,7 @@ haptools::ViewOptions parse_common_view_options(
             if (idx + 1 >= argc) {
                 throw std::runtime_error("--samples-file requires a path");
             }
-            *samples = haptools::load_sample_list(argv[++idx]);
+            *samples = haplokit::load_sample_list(argv[++idx]);
             continue;
         }
         if (arg == "--impute") {
@@ -135,9 +135,9 @@ haptools::ViewOptions parse_common_view_options(
             }
             const std::string value = argv[++idx];
             if (value == "summary") {
-                options.output_mode = haptools::OutputMode::Summary;
+                options.output_mode = haplokit::OutputMode::Summary;
             } else if (value == "detail") {
-                options.output_mode = haptools::OutputMode::Detail;
+                options.output_mode = haplokit::OutputMode::Detail;
             } else {
                 throw std::runtime_error("unsupported --output value: " + value);
             }
@@ -164,13 +164,13 @@ haptools::ViewOptions parse_common_view_options(
     return options;
 }
 
-std::vector<haptools::Region> load_bed_regions(const std::string& path) {
+std::vector<haplokit::Region> load_bed_regions(const std::string& path) {
     std::ifstream handle(path);
     if (!handle) {
         throw std::runtime_error("failed to open regions file: " + path);
     }
 
-    std::vector<haptools::Region> regions;
+    std::vector<haplokit::Region> regions;
     std::string line;
     while (std::getline(handle, line)) {
         if (!line.empty() && line.back() == '\r') {
@@ -195,7 +195,7 @@ std::vector<haptools::Region> load_bed_regions(const std::string& path) {
             throw std::runtime_error("BED rows must have at least 3 columns");
         }
 
-        haptools::Region region;
+        haplokit::Region region;
         region.chrom = fields[0];
         region.start = std::stoi(fields[1]);
         region.end = std::stoi(fields[2]);
@@ -207,31 +207,31 @@ std::vector<haptools::Region> load_bed_regions(const std::string& path) {
 int run_view_json(int argc, char** argv) {
     const auto parsed = parse_view_json_command(argc, argv);
 
-    std::optional<haptools::GffAnnotator> annotator;
+    std::optional<haplokit::GffAnnotator> annotator;
     if (!parsed.gff3_path.empty()) {
-        haptools::GffAnnotator ann;
+        haplokit::GffAnnotator ann;
         if (!ann.load(parsed.gff3_path)) {
             throw std::runtime_error("failed to parse GFF3: " + parsed.gff3_path);
         }
         annotator = std::move(ann);
     }
 
-    haptools::VcfReader reader(parsed.input_vcf);
+    haplokit::VcfReader reader(parsed.input_vcf);
     const auto data = reader.fetch(parsed.region, parsed.samples);
-    auto result = haptools::build_view_result(data, parsed.options);
+    auto result = haplokit::build_view_result(data, parsed.options);
 
     if (annotator.has_value()) {
         result.annotation = annotator->annotate(parsed.region.chrom, parsed.region.start, parsed.region.end);
     }
 
-    std::cout << haptools::serialize_view_result_json(result) << "\n";
+    std::cout << haplokit::serialize_view_result_json(result) << "\n";
     return 0;
 }
 
 int run_view_bed_jsonl(int argc, char** argv) {
     if (argc < 4) {
         throw std::runtime_error(
-            "usage: haptools_cpp view-bed-jsonl <vcf> <regions.bed> [--samples-file path] [--impute] "
+            "usage: haplokit_cpp view-bed-jsonl <vcf> <regions.bed> [--samples-file path] [--impute] "
             "[--output summary|detail] [--max-diff x] [--gff3 path]");
     }
 
@@ -240,22 +240,22 @@ int run_view_bed_jsonl(int argc, char** argv) {
     std::vector<std::string> samples;
     std::string gff3_path;
     auto options = parse_common_view_options(argc, argv, 4, &samples, &gff3_path);
-    options.by = haptools::GroupBy::Region;
+    options.by = haplokit::GroupBy::Region;
 
-    std::optional<haptools::GffAnnotator> annotator;
+    std::optional<haplokit::GffAnnotator> annotator;
     if (!gff3_path.empty()) {
-        haptools::GffAnnotator ann;
+        haplokit::GffAnnotator ann;
         if (!ann.load(gff3_path)) {
             throw std::runtime_error("failed to parse GFF3: " + gff3_path);
         }
         annotator = std::move(ann);
     }
 
-    haptools::VcfReader reader(input_vcf);
+    haplokit::VcfReader reader(input_vcf);
     const auto regions = load_bed_regions(regions_file);
     for (std::size_t idx = 0; idx < regions.size(); ++idx) {
         const auto data = reader.fetch(regions[idx], samples);
-        auto result = haptools::build_view_result(data, options);
+        auto result = haplokit::build_view_result(data, options);
 
         if (annotator.has_value()) {
             // BED is 0-based half-open; GFF annotation needs 1-based inclusive
@@ -264,19 +264,19 @@ int run_view_bed_jsonl(int argc, char** argv) {
             result.annotation = annotator->annotate(regions[idx].chrom, gff_start, gff_end);
         }
 
-        std::cout << haptools::serialize_view_result_json(result) << "\n";
+        std::cout << haplokit::serialize_view_result_json(result) << "\n";
     }
     return 0;
 }
 
 int run_debug_fetch(int argc, char** argv) {
     if (argc < 3) {
-        std::cerr << "usage: haptools_cpp <vcf> <region>\n";
+        std::cerr << "usage: haplokit_cpp <vcf> <region>\n";
         return 1;
     }
 
-    const haptools::Region region = haptools::parse_region(argv[2]);
-    haptools::VcfReader reader(argv[1]);
+    const haplokit::Region region = haplokit::parse_region(argv[2]);
+    haplokit::VcfReader reader(argv[1]);
     const auto data = reader.fetch(region);
     std::cout << "opened " << argv[1] << " for " << region.chrom << ":" << region.start << "-" << region.end << "\n";
     std::cout << "samples " << data.samples.size() << "\n";

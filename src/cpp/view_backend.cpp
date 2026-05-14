@@ -8,7 +8,7 @@
 #include <sstream>
 #include <stdexcept>
 
-namespace haptools {
+namespace haplokit {
 namespace {
 
 std::optional<std::string> normalize_call(const GenotypeCall& call, bool impute_ref) {
@@ -256,4 +256,4 @@ std::vector<std::string> load_sample_list(const std::string& path) {
     return samples;
 }
 
-}  // namespace haptools
+}  // namespace haplokit

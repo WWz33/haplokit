@@ -1,4 +1,4 @@
-# haptools
+# haplokit
 
 CLI-first haplotype viewer with bcftools-like selectors, C++ backend acceleration, and Python plotting.
 
@@ -28,7 +28,7 @@ python -m pip install -e .[test]
 ## Quick Start
 
 ```bash
-haptools view data/var.sorted.vcf.gz -r scaffold_1:4300-5000 --output-file out
+haplokit view data/var.sorted.vcf.gz -r scaffold_1:4300-5000 --output-file out
 ```
 
 This writes:
@@ -70,7 +70,7 @@ The geographic distribution map overlays haplotype composition pie charts onto a
 
 ## bcftools-like selector semantics
 
-`haptools view` follows the same selector vocabulary shape used in `bcftools` workflows.
+`haplokit view` follows the same selector vocabulary shape used in `bcftools` workflows.
 
 - `-r/--region chr:start-end` selects a range
 - `-r/--region chr:pos` selects a single site
@@ -87,7 +87,7 @@ Validation rules:
 
 ## C++ backend acceleration
 
-The Python CLI delegates heavy hap grouping work to `haptools_cpp`.
+The Python CLI delegates heavy hap grouping work to `haplokit_cpp`.
 
 ### Vendored libraries
 
@@ -97,9 +97,9 @@ The Python CLI delegates heavy hap grouping work to `haptools_cpp`.
 
 Backend discovery order:
 
-1. `HAPTOOLS_CPP_BIN`
-2. packaged binary: `haptools/_bin/haptools_cpp`
-3. repo builds: `build-wsl/haptools_cpp`, then `build/haptools_cpp`
+1. `HAPLOKIT_CPP_BIN`
+2. packaged binary: `haplokit/_bin/haplokit_cpp`
+3. repo builds: `build-wsl/haplokit_cpp`, then `build/haplokit_cpp`
 4. fallback local build: `cmake -S . -B build-wsl` and `cmake --build build-wsl --clean-first -j1`
 
 If no backend is found after discovery/build, the CLI exits with an explicit error.
@@ -107,7 +107,7 @@ If no backend is found after discovery/build, the CLI exits with an explicit err
 ## Command
 
 ```text
-haptools view <input_vcf> (-r <region> | -R <regions.bed>) [options]
+haplokit view <input_vcf> (-r <region> | -R <regions.bed>) [options]
 ```
 
 `<input_vcf>` should be an indexed VCF/BCF file (`.vcf.gz` + `.tbi`, or BCF index).
@@ -166,31 +166,31 @@ File naming rules:
 ### Region mode (strict exact grouping)
 
 ```bash
-haptools view in.vcf.gz -r chr1:1000-2000 --output-file out
+haplokit view in.vcf.gz -r chr1:1000-2000 --output-file out
 ```
 
 ### Site mode
 
 ```bash
-haptools view in.vcf.gz -r chr1:1450 --output-file out_site
+haplokit view in.vcf.gz -r chr1:1450 --output-file out_site
 ```
 
 ### BED batch + sample subset + plot + annotation
 
 ```bash
-haptools view in.vcf.gz -R regions.bed -S samples.list --plot --gff genes.gff3 --output-file out_bed
+haplokit view in.vcf.gz -R regions.bed -S samples.list --plot --gff genes.gff3 --output-file out_bed
 ```
 
 ### With population groups and PNG figure
 
 ```bash
-haptools view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --plot --plot-format png --output-file out
+haplokit view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --plot --plot-format png --output-file out
 ```
 
 ### JSONL detail mode with approximate grouping
 
 ```bash
-haptools view in.vcf.gz -r chr1:1000-2000 --max-diff 0.2 --output-format jsonl --output detail --output-file result.jsonl
+haplokit view in.vcf.gz -r chr1:1000-2000 --max-diff 0.2 --output-format jsonl --output detail --output-file result.jsonl
 ```
 
 ## Upgrading Notes
@@ -206,20 +206,20 @@ Linux/WSL validation path:
 ```bash
 cmake -S . -B build-wsl
 cmake --build build-wsl -j12
-HAPTOOLS_CPP_BIN=$PWD/build-wsl/haptools_cpp python -m pytest -q tests/python
+HAPLOKIT_CPP_BIN=$PWD/build-wsl/haplokit_cpp python -m pytest -q tests/python
 ctest --test-dir build-wsl --output-on-failure
 ```
 
 See:
 
-- `docs/specs/haptools-view-cli.md`
-- `docs/specs/haptools-result-schema.md`
-- `docs/development/haptools-linux-workflow.md`
+- `docs/specs/haplokit-view-cli.md`
+- `docs/specs/haplokit-result-schema.md`
+- `docs/development/haplokit-linux-workflow.md`
 - `docs/release/pypi-release.md`
 
 ## Acknowledgements
 
-haptools is inspired by geneHapR:
+haplokit is inspired by geneHapR:
 
 > Zhang, R., Jia, G. & Diao, X. geneHapR: an R package for gene haplotypic statistics and visualization. BMC Bioinformatics 24, 199 (2023). https://doi.org/10.1186/s12859-023-05318-9
 

@@ -2,7 +2,7 @@
 
 #include <stdexcept>
 
-namespace haptools {
+namespace haplokit {
 
 Region parse_region(const std::string& value) {
     const auto colon = value.find(':');
@@ -29,4 +29,4 @@ bool is_site_region(const Region& region) {
     return region.start == region.end;
 }
 
-}  // namespace haptools
+}  // namespace haplokit

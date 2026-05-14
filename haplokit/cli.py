@@ -41,7 +41,7 @@ class Selector:
     region: str
 
 
-class HaptoolsArgumentParser(argparse.ArgumentParser):
+class HaolokitArgumentParser(argparse.ArgumentParser):
     def parse_args(self, args: list[str] | None = None, namespace=None):
         ns = super().parse_args(args=args, namespace=namespace)
         self._validate(ns)
@@ -69,8 +69,8 @@ class HaptoolsArgumentParser(argparse.ArgumentParser):
         ns.by = "region"
 
 
-def build_parser() -> HaptoolsArgumentParser:
-    parser = HaptoolsArgumentParser(prog="haptools")
+def build_parser() -> HaolokitArgumentParser:
+    parser = HaolokitArgumentParser(prog="haplokit")
     subparsers = parser.add_subparsers(dest="command")
 
     view = subparsers.add_parser("view")
@@ -144,19 +144,19 @@ def _write_jsonl(rows: Iterable[dict[str, object]], output_file: str | None) -> 
 
 
 def _cpp_backend_path() -> Path:
-    env_path = os.environ.get("HAPTOOLS_CPP_BIN")
+    env_path = os.environ.get("HAPLOKIT_CPP_BIN")
     candidates: list[Path] = []
     if env_path:
         candidates.append(Path(env_path))
 
-    package_bin = Path(__file__).resolve().parent / "_bin" / "haptools_cpp"
+    package_bin = Path(__file__).resolve().parent / "_bin" / "haplokit_cpp"
     candidates.append(package_bin)
 
     repo_root = Path(__file__).resolve().parents[1]
     candidates.extend(
         [
-            repo_root / "build-wsl" / "haptools_cpp",
-            repo_root / "build" / "haptools_cpp",
+            repo_root / "build-wsl" / "haplokit_cpp",
+            repo_root / "build" / "haplokit_cpp",
         ]
     )
 
@@ -175,12 +175,12 @@ def _cpp_backend_path() -> Path:
     refreshed_candidates = []
     if env_path:
         refreshed_candidates.append(Path(env_path))
-    refreshed_candidates.extend([build_dir / "haptools_cpp", repo_root / "build" / "haptools_cpp"])
+    refreshed_candidates.extend([build_dir / "haplokit_cpp", repo_root / "build" / "haplokit_cpp"])
     for candidate in refreshed_candidates:
         if candidate.exists():
             return candidate
     raise FileNotFoundError(
-        "haptools_cpp backend not found; build the C++ target first or set HAPTOOLS_CPP_BIN"
+        "haplokit_cpp backend not found; build the C++ target first or set HAPLOKIT_CPP_BIN"
     )
 
 
@@ -511,7 +511,7 @@ def _write_plot_artifacts(
         artifact_paths["summary_file"] = artifact_paths["hap_summary_file"]
 
         if args.plot:
-            from haptools.plot import plot_hap_table, read_hap_summary_tsv, read_popgroup
+            from haplokit.plot import plot_hap_table, read_hap_summary_tsv, read_popgroup
 
             pdf_path = _plot_path_for_selector(args, selector, idx, len(selectors))
             summary_table = read_hap_summary_tsv(summary_path)
