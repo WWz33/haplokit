@@ -57,6 +57,13 @@ Overlay gene structure on the haplotype table.
 haplokit view in.vcf.gz -r chr1:1000-2000 --gff genes.gff3 --plot --output-file out
 ```
 
+`genes.gff3` format (standard GFF3):
+
+```text
+chr1	.	gene	1000	3000	.	+	.	ID=gene1;Name=GeneA
+chr1	.	CDS	1200	1500	.	+	0	ID=cds1;Parent=gene1
+```
+
 Adds SnpEff-style functional category strip (CDS, UTR, exon, intron, intergenic) above variant positions. Writes figure (`out/*.png`) + `gff_ann_summary.tsv`.
 
 <img src="plottable.png" alt="Haplotype summary table" width="800">
@@ -80,7 +87,15 @@ Compare haplotype distributions across populations.
 haplokit view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --plot --output-file out
 ```
 
-`popgroup.txt` is tab-separated: `sample<TAB>population`. Adds population columns to the table and figure.
+`popgroup.txt` (tab-separated: `sample<TAB>population`):
+
+```text
+C1	wild
+C2	wild
+C13	landrace
+```
+
+Adds population columns to the table and figure.
 
 ### 5. Geographic distribution map
 
@@ -88,6 +103,14 @@ Map haplotype composition at sampling locations.
 
 ```bash
 haplokit view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --geo sample_geo.txt --plot --output-file out
+```
+
+`sample_geo.txt` (tab-separated: `ID<TAB>longitude<TAB>latitude`):
+
+```text
+ID	longitude	latitude
+C1	116.40	39.90
+C4	121.47	31.23
 ```
 
 <img src="plotmap.png" alt="Haplotype geographic distribution" width="600">
@@ -105,6 +128,13 @@ Process multiple regions in one run.
 
 ```bash
 haplokit view in.vcf.gz -R regions.bed --output-file out_batch
+```
+
+`regions.bed` (≥3 tab-separated columns):
+
+```text
+chr1	1000	2000
+chr2	5000	6000
 ```
 
 Each BED row is processed independently. Output files are suffixed by region slug (`_chr1_1000_2000`).
@@ -127,7 +157,15 @@ Restrict analysis to specific samples; fill missing calls as reference.
 haplokit view in.vcf.gz -r chr1:1000-2000 -S samples.list --impute --output-file out
 ```
 
-`samples.list`: one sample ID per line. `--impute` treats missing GT as `0/0`, increasing sample retention.
+`samples.list` (one sample ID per line):
+
+```text
+C1
+C5
+C16
+```
+
+`--impute` treats missing GT as `0/0`, increasing sample retention.
 
 ## Full Parameters
 

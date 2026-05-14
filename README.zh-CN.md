@@ -57,6 +57,13 @@ haplokit view in.vcf.gz -r chr1:1450 --output-file out_site
 haplokit view in.vcf.gz -r chr1:1000-2000 --gff genes.gff3 --plot --output-file out
 ```
 
+`genes.gff3` 格式（标准 GFF3）：
+
+```text
+chr1	.	gene	1000	3000	.	+	.	ID=gene1;Name=GeneA
+chr1	.	CDS	1200	1500	.	+	0	ID=cds1;Parent=gene1
+```
+
 添加 SnpEff 风格功能分类色带（CDS、UTR、exon、intron、intergenic）到变异位点上。输出图片（`out/*.png`）+ `gff_ann_summary.tsv`。
 
 <img src="plottable.png" alt="单倍型汇总表" width="800">
@@ -80,7 +87,15 @@ haplokit view in.vcf.gz -r chr1:1000-2000 --gff genes.gff3 --plot --output-file 
 haplokit view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --plot --output-file out
 ```
 
-`popgroup.txt` 为 Tab 分隔：`sample<TAB>population`。在表和图中添加群体列。
+`popgroup.txt`（Tab 分隔：`sample<TAB>population`）：
+
+```text
+C1	wild
+C2	wild
+C13	landrace
+```
+
+在表和图中添加群体列。
 
 ### 5. 地理分布图
 
@@ -88,6 +103,14 @@ haplokit view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --plot --output-file o
 
 ```bash
 haplokit view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --geo sample_geo.txt --plot --output-file out
+```
+
+`sample_geo.txt`（Tab 分隔：`ID<TAB>longitude<TAB>latitude`）：
+
+```text
+ID	longitude	latitude
+C1	116.40	39.90
+C4	121.47	31.23
 ```
 
 <img src="plotmap.png" alt="单倍型地理分布图" width="600">
@@ -105,6 +128,13 @@ haplokit view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --geo sample_geo.txt -
 
 ```bash
 haplokit view in.vcf.gz -R regions.bed --output-file out_batch
+```
+
+`regions.bed`（≥3 列，Tab 分隔）：
+
+```text
+chr1	1000	2000
+chr2	5000	6000
 ```
 
 每行 BED 独立处理。输出文件按区域 slug 加后缀（`_chr1_1000_2000`）。
@@ -127,7 +157,15 @@ haplokit view in.vcf.gz -r chr1:1000-2000 --max-diff 0.2 --output-file out
 haplokit view in.vcf.gz -r chr1:1000-2000 -S samples.list --impute --output-file out
 ```
 
-`samples.list`：每行一个样本 ID。`--impute` 将缺失 GT 视为 `0/0`，提高样本保留率。
+`samples.list`（每行一个样本 ID）：
+
+```text
+C1
+C5
+C16
+```
+
+`--impute` 将缺失 GT 视为 `0/0`，提高样本保留率。
 
 ## 完整参数
 
