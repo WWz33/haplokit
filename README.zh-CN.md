@@ -124,10 +124,11 @@ C4	121.47	31.23
 
 ### 6. 单倍型网络 — popart 风格
 
-构建 TCS 网络（Templeton 等, 1992），以 [popart](https://popart.maths.otago.ac.nz/) (Leigh & Bryant, 2015) 的视觉规范呈现。
+构建单倍型网络，以 [popart](https://popart.maths.otago.ac.nz/) (Leigh & Bryant, 2015) 的视觉规范呈现。支持三种推断方法：TCS (Clement et al. 2002)、MSN 和 MJN (Bandelt, Forster & Röhl 1999)。
 
 ```bash
 haplokit view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --network --plot --output-file out
+haplokit view in.vcf.gz -r chr1:1000-2000 --network --network-method mjn --plot --output-file out
 ```
 
 图表组件：
@@ -245,7 +246,8 @@ haplokit view <input_vcf> (-r <region> | -R <regions.bed>) [options]
 | `--plot-format` | `png\|pdf\|svg\|tiff` | `png` | 图片格式 |
 | `--max-diff` | 浮点 [0,1] | — | 近似分组阈值 |
 | `--geo` | 路径 | — | 样本地理坐标（用于地图） |
-| `--network` | 开关 | 关 | 渲染单倍型网络（popart 风格 TCS） |
+| `--network` | 开关 | 关 | 渲染单倍型网络（popart 风格） |
+| `--network-method` | `tcs`/`msn`/`mjn` | `tcs` | 网络推断算法 |
 
 选择器规则：`-r` 与 `-R` 互斥且必须提供其一。`--by site` 仅可用于 `-r chr:pos`。
 

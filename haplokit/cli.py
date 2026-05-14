@@ -90,6 +90,7 @@ def build_parser() -> HaolokitArgumentParser:
     view.add_argument("--max-diff", type=_max_diff_value)
     view.add_argument("--geo", dest="geo_file")
     view.add_argument("--network", action="store_true")
+    view.add_argument("--network-method", choices=["tcs", "msn", "mjn"], default="tcs")
 
     return parser
 
@@ -607,6 +608,7 @@ def _write_plot_artifacts(
                 hap_names, hap_strings, hap_counts, net_path,
                 pop_data=pop_data_net, title=gene_name,
                 fmt=args.plot_format,
+                algorithm=args.network_method,
             ))
         written.append(artifact_paths)
 

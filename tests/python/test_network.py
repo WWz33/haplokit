@@ -126,9 +126,10 @@ def test_mjn_network():
 def test_plot_hap_network_uses_cpp_network_result(tmp_path, monkeypatch):
     calls = {}
 
-    def fake_compute(sequences, samples):
+    def fake_compute(sequences, samples, algorithm="tcs", **kwargs):
         calls["sequences"] = sequences
         calls["samples"] = samples
+        calls["algorithm"] = algorithm
         return {
             "nodes": [
                 {"id": 0, "sequence": sequences[0], "samples": ["S1", "S2"], "is_median": False},
@@ -141,7 +142,7 @@ def test_plot_hap_network_uses_cpp_network_result(tmp_path, monkeypatch):
             ],
         }
 
-    monkeypatch.setattr("haplokit._network.compute_tcs_network", fake_compute)
+    monkeypatch.setattr("haplokit.network.compute_network", fake_compute)
 
     output = plot_hap_network(
         ["H001", "H002"],

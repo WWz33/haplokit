@@ -124,10 +124,11 @@ Figure components:
 
 ### 6. Haplotype network — popart-style
 
-Build a TCS network (Templeton et al. 1992) and visualize it in the conventions of [popart](https://popart.maths.otago.ac.nz/) (Leigh & Bryant 2015).
+Build a haplotype network and visualize it in the conventions of [popart](https://popart.maths.otago.ac.nz/) (Leigh & Bryant 2015). Supports three inference methods: TCS (Clement et al. 2002), MSN and MJN (Bandelt, Forster & Röhl 1999).
 
 ```bash
 haplokit view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --network --plot --output-file out
+haplokit view in.vcf.gz -r chr1:1000-2000 --network --network-method mjn --plot --output-file out
 ```
 
 Figure components:
@@ -245,7 +246,8 @@ haplokit view <input_vcf> (-r <region> | -R <regions.bed>) [options]
 | `--plot-format` | `png\|pdf\|svg\|tiff` | `png` | Figure format |
 | `--max-diff` | float [0,1] | — | Approximate grouping threshold |
 | `--geo` | path | — | Sample geographic coordinates for map |
-| `--network` | flag | off | Render haplotype network (popart-style TCS) |
+| `--network` | flag | off | Render haplotype network (popart-style) |
+| `--network-method` | `tcs`/`msn`/`mjn` | `tcs` | Network inference algorithm |
 
 Selector rules: `-r` and `-R` are mutually exclusive and one is required. `--by site` only valid with `-r chr:pos`.
 

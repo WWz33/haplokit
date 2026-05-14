@@ -328,6 +328,7 @@ def plot_hap_network(
     legend_font_size: float = 7,
     dpi: int = 600,
     fmt: str | None = None,
+    algorithm: str = "tcs",
 ) -> Path:
     """Render a TCS-style haplotype network in popart's visual style.
 
@@ -355,7 +356,8 @@ def plot_hap_network(
 
     # ---- Build network -----------------------------------------------------
     samples = [[name] * max(int(count), 1) for name, count in zip(hap_names, hap_counts)]
-    network = compute_tcs_network(hap_strings, samples)
+    from .network import compute_network
+    network = compute_network(hap_strings, samples, algorithm=algorithm)
     node_index = {node["id"]: idx for idx, node in enumerate(network["nodes"])}
     edges = [
         (
