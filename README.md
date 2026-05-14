@@ -16,6 +16,12 @@ CLI-first haplotype viewer with bcftools-like selectors, C++ backend acceleratio
 - Python 3.10+
 - C++17 toolchain and CMake 3.22+ for source builds
 
+### Install from PyPI
+
+```bash
+python -m pip install haplokit
+```
+
 ### Install from source
 
 ```bash

@@ -16,6 +16,12 @@
 - Python 3.10+
 - 源码构建需要 C++17 工具链和 CMake 3.22+
 
+### 从 PyPI 安装
+
+```bash
+python -m pip install haplokit
+```
+
 ### 从源码安装
 
 ```bash
