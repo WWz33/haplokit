@@ -138,6 +138,8 @@ Figure components:
 - **Hatch marks across edges**: one tick per mutation (popart convention)
 - **Small black dots**: inferred median (intermediate) vertices, where TCS infers ancestors
 
+![Network algorithms comparison — MSN / TCS / MJN](plotnetwork_3algo.png)
+
 ### 7. BED batch processing
 
 Process multiple regions in one run.
@@ -271,8 +273,6 @@ C++ implementation of haplotype network algorithms (MSN, TCS, MJN) with SIMD acc
 - **Status**: Core C++ library compiled and tested ✓
 - **Python Interface**: `haplokit.network` with automatic C++/Python fallback
 - **Visualization**: PopART-style rendering with pie chart nodes, hatch marks, trait legends
-
-![Network algorithms comparison](plotnetwork_3algo.png)
 
 Reference implementation (pure Python) archived in `archive/python_reference_implementation/` for algorithm verification.
 

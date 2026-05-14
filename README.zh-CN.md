@@ -138,6 +138,8 @@ haplokit view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --network --plot --out
 - **边上的横线刻度**：每条横线代表一个突变（popart 规范）
 - **小黑点**：TCS 推断的中间（祖先）节点
 
+![网络算法对比 — MSN / TCS / MJN](plotnetwork_3algo.png)
+
 ### 7. BED 批处理
 
 一次运行处理多个区域。
@@ -270,8 +272,6 @@ C++ 实现的单倍型网络算法（MSN、TCS、MJN），支持 SIMD 加速：
 - **优化**：AVX2 SIMD Hamming 距离、OpenMP 并行
 - **Python 接口**：`haplokit.network`，自动 C++/Python 回退
 - **可视化**：PopART 风格渲染，饼图节点、突变刻度线、性状图例
-
-![网络算法对比](plotnetwork_3algo.png)
 
 纯 Python 参考实现归档于 `archive/python_reference_implementation/`。
 
