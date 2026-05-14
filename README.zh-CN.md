@@ -167,6 +167,42 @@ C16
 
 `--impute` 将缺失 GT 视为 `0/0`，提高样本保留率。
 
+## 输出文件
+
+### `hapresult.tsv` — 逐样本单倍型详情
+
+```text
+CHR     scaffold_1  scaffold_1  ...  Haplotypes:  8
+POS     4300        4345        ...  Individuals: 37
+INFO    .           .           ...  Variants:    5
+ALLELE  G/C         T/A,GG      ...  Accession
+H001    G           T           ...  C8;C9;C11;C14;C18;C25;C26;C28;C31;C35
+```
+
+- **表头行**（CHR/POS/INFO/ALLELE）：跨列变异元数据
+- **单倍型行**（H001–HNNN）：每位点等位基因；空 = 参考；携带该单倍型的样本列表
+
+### `hap_summary.tsv` — 单倍型计数汇总
+
+与 `hapresult.tsv` 表头相同，多一列 `freq`（计数/总数）：
+
+```text
+H001  G   T   T   GCCTA  T   10
+H002  G   T   T   A      T   8
+H003  C   T   T   A      T   8
+```
+
+### `gff_ann_summary.tsv` — 基因注释（仅 `--gff`）
+
+```text
+chr           start  end   ann
+scaffold_1    4300   5000  test1G0387
+```
+
+### 图片文件（`--plot`）
+
+格式由 `--plot-format` 设定（默认 `png`）。按区域 slug 命名：`<prefix>.<chr>_<start>_<end>.png`。
+
 ## 完整参数
 
 ```

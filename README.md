@@ -167,6 +167,42 @@ C16
 
 `--impute` treats missing GT as `0/0`, increasing sample retention.
 
+## Output Files
+
+### `hapresult.tsv` — per-sample haplotype detail
+
+```text
+CHR     scaffold_1  scaffold_1  ...  Haplotypes:  8
+POS     4300        4345        ...  Individuals: 37
+INFO    .           .           ...  Variants:    5
+ALLELE  G/C         T/A,GG      ...  Accession
+H001    G           T           ...  C8;C9;C11;C14;C18;C25;C26;C28;C31;C35
+```
+
+- **Header rows** (CHR/POS/INFO/ALLELE): variant metadata across columns
+- **Haplotype rows** (H001–HNNN): allele at each position; empty = reference; list of samples carrying this haplotype
+
+### `hap_summary.tsv` — haplotype count summary
+
+Same header as `hapresult.tsv`, plus a `freq` column (count/total):
+
+```text
+H001  G   T   T   GCCTA  T   10
+H002  G   T   T   A      T   8
+H003  C   T   T   A      T   8
+```
+
+### `gff_ann_summary.tsv` — gene annotation (`--gff` only)
+
+```text
+chr           start  end   ann
+scaffold_1    4300   5000  test1G0387
+```
+
+### Figure files (`--plot`)
+
+Format set by `--plot-format` (default `png`). Named per region slug: `<prefix>.<chr>_<start>_<end>.png`.
+
 ## Full Parameters
 
 ```
