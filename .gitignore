@@ -41,5 +41,9 @@ Thumbs.db
 # Exclude geneHapR (legacy R package, not shipped)
 geneHapR/
 
+# Internal docs and AI config (not for public repo)
+CLAUDE.md
+docs/
+
 # Stray outputs
 *.tmp

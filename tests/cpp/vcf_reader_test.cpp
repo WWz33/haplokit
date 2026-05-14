@@ -14,7 +14,7 @@ std::filesystem::path repo_root() {
 }
 
 int run() {
-    const auto vcf = repo_root() / "inst" / "extdata" / "var.sorted.vcf.gz";
+    const auto vcf = repo_root() / "data" / "var.sorted.vcf.gz";
     if (!std::filesystem::exists(vcf)) {
         throw std::runtime_error("missing test fixture: " + vcf.string());
     }
