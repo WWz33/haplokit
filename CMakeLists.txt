@@ -27,10 +27,10 @@ target_include_directories(haplokit_core
         ${CMAKE_CURRENT_SOURCE_DIR}/src/cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/deps/gffsub/src
         ${CMAKE_CURRENT_SOURCE_DIR}/deps/nlohmann
-        ${HAPTOOLS_HTSLIB_INCLUDE_DIRS}
+        ${HAPLOKIT_HTSLIB_INCLUDE_DIRS}
 )
 
-target_link_libraries(haplokit_core PUBLIC ${HAPTOOLS_HTSLIB_TARGET} ${HAPTOOLS_HTSLIB_EXTRA_LIBS})
+target_link_libraries(haplokit_core PUBLIC ${HAPLOKIT_HTSLIB_TARGET} ${HAPLOKIT_HTSLIB_EXTRA_LIBS})
 add_dependencies(haplokit_core haplokit_htslib_build)
 
 add_executable(haplokit_cpp
