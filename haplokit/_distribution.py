@@ -52,7 +52,7 @@ def plot_hap_distribution(
     database: str = "china",
     geo_source: str | None = None,
     symbol_lim: tuple[float, float] = (0.3, 1.2),
-    show_labels: bool = True,
+    show_labels: bool = False,
     label_font_size: float = 5.5,
     legend_font_size: float = 7,
     dpi: int = 600,
@@ -193,12 +193,67 @@ def plot_hap_distribution(
                 color="#272727", zorder=6,
             )
 
-    # ── Legend ──
+    # ── Top legends: haplotype colors (left) + bubble size (right) ──
     handles = make_legend_handles(color_map)
-    ax.legend(handles=handles, fontsize=legend_font_size, loc="upper left", framealpha=0.9)
+    n_color_cols = min(len(handles), 6)
+    color_legend = ax.legend(
+        handles=handles,
+        fontsize=legend_font_size,
+        loc="lower left",
+        bbox_to_anchor=(0.0, 1.02, 0.6, 0.15),
+        ncol=n_color_cols,
+        frameon=False,
+        mode="expand",
+        handletextpad=0.5,
+        columnspacing=1.2,
+        borderaxespad=0.0,
+    )
+    ax.add_artist(color_legend)
 
-    if title:
-        fig.suptitle(title, fontsize=9, fontweight="bold", y=0.96, color="#272727")
+    # Bubble-size legend (ggplot2 style) — top-right, marker-size based
+    if totals:
+        from matplotlib.lines import Line2D
+        sorted_totals = sorted(set(totals))
+        if len(sorted_totals) == 1:
+            bubble_vals = [sorted_totals[0]]
+        elif len(sorted_totals) == 2:
+            bubble_vals = sorted_totals
+        else:
+            lo, hi = min(totals), max(totals)
+            mid = int(round((lo + hi) / 2))
+            bubble_vals = [lo, mid, hi]
 
-    fig.tight_layout(pad=1.5)
+        marker_factor = 11.0
+        size_handles = []
+        for val in bubble_vals:
+            s = math.sqrt(val)
+            if dif > 0:
+                norm = (s - min_sq) / dif
+                r = norm * (symbol_lim[1] - symbol_lim[0]) + symbol_lim[0]
+            else:
+                r = (symbol_lim[0] + symbol_lim[1]) / 2
+            size_handles.append(
+                Line2D(
+                    [0], [0], marker="o", linestyle="none",
+                    markerfacecolor="#cccccc", markeredgecolor="#666666",
+                    markeredgewidth=0.5,
+                    markersize=r * marker_factor, label=str(val),
+                )
+            )
+        ax.legend(
+            handles=size_handles,
+            fontsize=legend_font_size,
+            loc="lower right",
+            bbox_to_anchor=(0.6, 1.02, 0.4, 0.15),
+            ncol=len(size_handles),
+            frameon=False,
+            title="Sample count",
+            title_fontsize=legend_font_size,
+            handletextpad=0.4,
+            columnspacing=1.5,
+            borderaxespad=0.0,
+        )
+
+    fig.tight_layout(pad=1.2)
+    fig.subplots_adjust(top=0.86)
     return save_figure(fig, output_path, dpi=dpi, fmt=fmt)

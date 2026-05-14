@@ -118,11 +118,27 @@ C4	121.47	31.23
 Figure components:
 
 - **Pie charts**: haplotype composition per location; size ∝ √(sample count)
-- **Count labels**: total samples at center of each pie
-- **Legend**: haplotype color key
+- **Color legend** (top-left): haplotype color key
+- **Bubble-size legend** (top-right): ggplot2-style graduated circles, showing the sample-count scale
 - **Base map**: GeoJSON province boundaries (China)
 
-### 6. BED batch processing
+### 6. Haplotype network — popart-style
+
+Build a TCS network (Templeton et al. 1992) and visualize it in the conventions of [popart](https://popart.maths.otago.ac.nz/) (Leigh & Bryant 2015).
+
+```bash
+haplokit view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --network --plot --output-file out
+```
+
+Figure components:
+
+- **Nodes**: one circle per haplotype; area ∝ √(sample count)
+- **Pie slices** (with `-p`): population composition per haplotype
+- **Edges**: ideal length proportional to mutation distance (force-directed layout)
+- **Hatch marks across edges**: one tick per mutation (popart convention)
+- **Small black dots**: inferred median (intermediate) vertices, where TCS infers ancestors
+
+### 7. BED batch processing
 
 Process multiple regions in one run.
 
@@ -139,7 +155,7 @@ chr2	5000	6000
 
 Each BED row is processed independently. Output files are suffixed by region slug (`_chr1_1000_2000`).
 
-### 7. Approximate grouping
+### 8. Approximate grouping
 
 Cluster similar haplotypes within a tolerance.
 
@@ -149,7 +165,7 @@ haplokit view in.vcf.gz -r chr1:1000-2000 --max-diff 0.2 --output-file out
 
 `--max-diff` (0–1): haplotypes differing at ≤ 20% of positions merge into one group. Grouping mode changes from `strict-region` to `approx-region`.
 
-### 8. Sample subset + imputation
+### 9. Sample subset + imputation
 
 Restrict analysis to specific samples; fill missing calls as reference.
 
@@ -227,6 +243,7 @@ haplokit view <input_vcf> (-r <region> | -R <regions.bed>) [options]
 | `--plot-format` | `png\|pdf\|svg\|tiff` | `png` | Figure format |
 | `--max-diff` | float [0,1] | — | Approximate grouping threshold |
 | `--geo` | path | — | Sample geographic coordinates for map |
+| `--network` | flag | off | Render haplotype network (popart-style TCS) |
 
 Selector rules: `-r` and `-R` are mutually exclusive and one is required. `--by site` only valid with `-r chr:pos`.
 
@@ -257,6 +274,10 @@ ctest --test-dir build-wsl --output-on-failure
 Inspired by geneHapR:
 
 > Zhang, R., Jia, G. & Diao, X. geneHapR: an R package for gene haplotypic statistics and visualization. BMC Bioinformatics 24, 199 (2023). https://doi.org/10.1186/s12859-023-05318-9
+
+Network visualization follows the conventions of [popart](https://popart.maths.otago.ac.nz/):
+
+> Leigh, J. W. & Bryant, D. popart: full‐feature software for haplotype network construction. Methods in Ecology and Evolution 6, 1110–1116 (2015). https://doi.org/10.1111/2041-210X.12410
 
 ## License
 

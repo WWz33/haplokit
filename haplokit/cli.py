@@ -88,6 +88,8 @@ def build_parser() -> HaolokitArgumentParser:
     view.add_argument("--plot-format", choices=["png", "pdf", "svg", "tiff"], default="png")
     view.add_argument("-p", "--population", dest="population_file")
     view.add_argument("--max-diff", type=_max_diff_value)
+    view.add_argument("--geo", dest="geo_file")
+    view.add_argument("--network", action="store_true")
 
     return parser
 
@@ -524,6 +526,88 @@ def _write_plot_artifacts(
                 pop_data = read_popgroup(args.population_file)
             gff_path = str(args.gff3) if args.gff3 else None
             artifact_paths["plot_file"] = str(plot_hap_table(summary_table, pdf_path, pop_data=pop_data, gff_path=gff_path, title=gene_name, fmt=args.plot_format))
+
+        # Geographic distribution map
+        if args.geo_file:
+            from haplokit.plot import plot_hap_distribution, read_popgroup
+
+            detail_row = detail_rows[idx]
+            summary_row_data = summary_rows[idx]
+            hap_names = [f"H{i:03d}" for i in range(1, len(summary_row_data.get("haplotypes", [])) + 1)]
+            hap_colors = None
+            if len(hap_names) > 0:
+                from haplokit._palette import allele_palette
+                hap_colors = list(allele_palette(hap_names).values())
+
+            # Build sample→haplotype mapping from detail accessions
+            sample_hap: dict[str, str] = {}
+            for acc in detail_row.get("accessions", []):
+                hap_idx = 0
+                for hi, h in enumerate(summary_row_data.get("haplotypes", [])):
+                    if h["hap"] == acc["hap"]:
+                        hap_idx = hi
+                        break
+                sample_hap[acc["sample"]] = hap_names[hap_idx] if hap_names else ""
+
+            # Read geo file
+            geo_samples: list[dict] = []
+            with Path(args.geo_file).open("r", encoding="utf-8") as gf:
+                import csv
+                reader = csv.DictReader(gf, delimiter="\t")
+                for row in reader:
+                    sid = row.get("ID", "").strip()
+                    if sid in sample_hap:
+                        geo_samples.append({
+                            "lon": float(row.get("longitude", 0)),
+                            "lat": float(row.get("latitude", 0)),
+                            "hap": sample_hap[sid],
+                        })
+
+            if geo_samples:
+                geo_path = _plot_path_for_selector(args, selector, idx, len(selectors))
+                geo_path = geo_path.with_name(geo_path.stem + "_map" + geo_path.suffix)
+                artifact_paths["geo_file"] = str(plot_hap_distribution(
+                    geo_samples, hap_names, geo_path,
+                    hap_colors=hap_colors, title=gene_name,
+                    fmt=args.plot_format,
+                ))
+
+        # Haplotype network
+        if args.network:
+            from haplokit.plot import plot_hap_network, read_popgroup
+
+            summary_row_data = summary_rows[idx]
+            detail_row = detail_rows[idx]
+            hap_names = [f"H{i:03d}" for i in range(1, len(summary_row_data.get("haplotypes", [])) + 1)]
+            hap_strings = [h["hap"] for h in summary_row_data.get("haplotypes", [])]
+            hap_counts = [h["count"] for h in summary_row_data.get("haplotypes", [])]
+
+            # Build population composition per haplotype
+            pop_data_net = None
+            if args.population_file:
+                pop_map = read_popgroup(args.population_file)
+                pop_names = sorted(set(pop_map.values()))
+                accessions_by_hap: dict[str, list[str]] = {}
+                for acc in detail_row.get("accessions", []):
+                    accessions_by_hap.setdefault(acc["hap"], []).append(acc["sample"])
+
+                hap_label_map = {h["hap"]: f"H{i:03d}" for i, h in enumerate(summary_row_data.get("haplotypes", []), 1)}
+                pop_data_net = {}
+                for hap_key, samples in accessions_by_hap.items():
+                    label = hap_label_map.get(hap_key, hap_key)
+                    counts_by_pop: dict[str, int] = {}
+                    for s in samples:
+                        p = pop_map.get(s, "Unknown")
+                        counts_by_pop[p] = counts_by_pop.get(p, 0) + 1
+                    pop_data_net[label] = [(p, counts_by_pop[p]) for p in pop_names if p in counts_by_pop]
+
+            net_path = _plot_path_for_selector(args, selector, idx, len(selectors))
+            net_path = net_path.with_name(net_path.stem + "_network" + net_path.suffix)
+            artifact_paths["network_file"] = str(plot_hap_network(
+                hap_names, hap_strings, hap_counts, net_path,
+                pop_data=pop_data_net, title=gene_name,
+                fmt=args.plot_format,
+            ))
         written.append(artifact_paths)
 
     return written

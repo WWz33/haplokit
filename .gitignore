@@ -47,3 +47,7 @@ docs/
 
 # Stray outputs
 *.tmp
+
+# Research / scratch
+hap_network/
+tmp_demo/

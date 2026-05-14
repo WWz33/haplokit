@@ -118,11 +118,27 @@ C4	121.47	31.23
 图表组件：
 
 - **饼图**：每位置单倍型组成；大小 ∝ √(样本数)
-- **计数标签**：饼图中心显示样本总数
-- **图例**：单倍型颜色键
+- **颜色图例**（左上）：单倍型颜色键
+- **气泡大小图例**（右上）：ggplot2 风格分级圆圈，展示样本数刻度
 - **底图**：GeoJSON 省界多边形（中国）
 
-### 6. BED 批处理
+### 6. 单倍型网络 — popart 风格
+
+构建 TCS 网络（Templeton 等, 1992），以 [popart](https://popart.maths.otago.ac.nz/) (Leigh & Bryant, 2015) 的视觉规范呈现。
+
+```bash
+haplokit view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --network --plot --output-file out
+```
+
+图表组件：
+
+- **节点**：每个单倍型一个圆；面积 ∝ √(样本数)
+- **饼图扇区**（配合 `-p`）：单倍型的群体组成
+- **边**：理想长度正比于突变距离（力导向布局）
+- **边上的横线刻度**：每条横线代表一个突变（popart 规范）
+- **小黑点**：TCS 推断的中间（祖先）节点
+
+### 7. BED 批处理
 
 一次运行处理多个区域。
 
@@ -139,7 +155,7 @@ chr2	5000	6000
 
 每行 BED 独立处理。输出文件按区域 slug 加后缀（`_chr1_1000_2000`）。
 
-### 7. 近似分组
+### 8. 近似分组
 
 在容差范围内聚类相似单倍型。
 
@@ -149,7 +165,7 @@ haplokit view in.vcf.gz -r chr1:1000-2000 --max-diff 0.2 --output-file out
 
 `--max-diff`（0–1）：差异 ≤ 20% 位点的单倍型归为一组。分组模式从 `strict-region` 变为 `approx-region`。
 
-### 8. 样本子集 + 填补
+### 9. 样本子集 + 填补
 
 限制分析到特定样本；缺失呼叫按参考等位基因填补。
 
@@ -227,6 +243,7 @@ haplokit view <input_vcf> (-r <region> | -R <regions.bed>) [options]
 | `--plot-format` | `png\|pdf\|svg\|tiff` | `png` | 图片格式 |
 | `--max-diff` | 浮点 [0,1] | — | 近似分组阈值 |
 | `--geo` | 路径 | — | 样本地理坐标（用于地图） |
+| `--network` | 开关 | 关 | 渲染单倍型网络（popart 风格 TCS） |
 
 选择器规则：`-r` 与 `-R` 互斥且必须提供其一。`--by site` 仅可用于 `-r chr:pos`。
 
@@ -257,6 +274,10 @@ ctest --test-dir build-wsl --output-on-failure
 设计灵感来自 geneHapR：
 
 > Zhang, R., Jia, G. & Diao, X. geneHapR: an R package for gene haplotypic statistics and visualization. BMC Bioinformatics 24, 199 (2023). https://doi.org/10.1186/s12859-023-05318-9
+
+网络可视化遵循 [popart](https://popart.maths.otago.ac.nz/) 的规范：
+
+> Leigh, J. W. & Bryant, D. popart: full‐feature software for haplotype network construction. Methods in Ecology and Evolution 6, 1110–1116 (2015). https://doi.org/10.1111/2041-210X.12410
 
 ## 许可证
 
