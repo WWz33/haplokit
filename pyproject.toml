@@ -5,11 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "haplokit"
 version = "0.1.0"
-description = "CLI-first haplotype tooling with a C++ backend and Python plotting surface"
+description = "CLI haplotype viewer with C++ backend and Python plotting"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "GPL-3.0-or-later"
-authors = [{ name = "haplokit contributors" }]
+authors = [{ name = "WWz33" }]
+keywords = ["haplotype", "vcf", "genomics", "bioinformatics", "visualization"]
 dependencies = [
   "matplotlib>=3.8",
 ]
@@ -23,8 +24,14 @@ classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: C++",
   "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
+
+[project.urls]
+Homepage = "https://github.com/WWz33/haplokit"
+Repository = "https://github.com/WWz33/haplokit"
+Issues = "https://github.com/WWz33/haplokit/issues"
 
 [project.scripts]
 haplokit = "haplokit.cli:main"
