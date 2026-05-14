@@ -1,14 +1,22 @@
 include README.md
+include README.zh-CN.md
 include LICENSE
 include CMakeLists.txt
+include pyproject.toml
+include setup.py
+include Makefile
 
 recursive-include haplokit *.py
 recursive-include cmake *.cmake
+recursive-include deps/gffsub src/*.cpp src/*.hpp LICENSE CMakeLists.txt Makefile
+recursive-include deps/nlohmann *.hpp
 recursive-include deps/htslib *
 recursive-include src/cpp *.cpp *.h
 recursive-include tests/cpp *.cpp
+recursive-include tests/python *.py
 recursive-include data *
-recursive-include docs/specs *.md
+recursive-include .github/workflows *.yml
 
 prune deps/htslib/.git
 prune deps/htslib/htscodecs/.git
+prune deps/gffsub/.git
