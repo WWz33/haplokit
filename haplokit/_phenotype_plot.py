@@ -28,10 +28,13 @@ def plot_hap_phenotype_box(
     comparisons: Sequence[tuple[str, str]] | None = None,
     hap_delimiter: str = "auto",
     phenotype_delimiter: str = "auto",
+    population_file: str | Path | None = None,
+    population_delimiter: str = "auto",
+    populations: Sequence[str] | None = None,
     title: str | None = None,
     fmt: str | None = None,
 ) -> Path:
-    """Plot phenotype distributions by haplotype as a boxplot with jittered samples."""
+    """Plot phenotype distributions by haplotype as boxplots with jittered samples."""
     if output_path is None:
         raise PhenotypeError("output_path is required")
     if trait is None:
@@ -42,6 +45,7 @@ def plot_hap_phenotype_box(
         if not records or not isinstance(records[0], PhenotypeRecord):
             raise PhenotypeError("phenotypes path is required unless haplotypes is a PhenotypeRecord sequence")
         hap_order = sort_haplotype_labels({record.haplotype for record in records})
+        population_order = _resolve_population_strata(records, populations)
     else:
         dataset = load_phenotype_dataset(
             haplotypes,
@@ -49,21 +53,33 @@ def plot_hap_phenotype_box(
             traits=[trait],
             hap_delimiter=hap_delimiter,
             phenotype_delimiter=phenotype_delimiter,
+            population_file=population_file,
+            population_delimiter=population_delimiter,
         )
         records = dataset.records
         hap_order = dataset.haplotypes
+        population_order = list(populations) if populations is not None else list(dataset.populations or [None])
 
-    grouped = group_values(records, trait, min_hap_size=min_hap_size, haplotypes=hap_order)
-    if not grouped:
+    grouped_panels = [
+        (population, group_values(records, trait, min_hap_size=min_hap_size, haplotypes=hap_order, population=population))
+        for population in population_order
+    ]
+    grouped_panels = [(population, grouped) for population, grouped in grouped_panels if grouped]
+    if not grouped_panels:
         raise PhenotypeError(f"no haplotypes retained for trait {trait!r} with min_hap_size={min_hap_size}")
 
     _ensure_mpl()
     import matplotlib.pyplot as plt
 
-    labels = list(grouped)
-    data = [grouped[label] for label in labels]
-    fig_width = max(5.0, 1.15 * len(labels) + 2.0)
-    fig, ax = plt.subplots(figsize=(fig_width, 4.8))
+    panel_count = len(grouped_panels)
+    max_labels = max(len(grouped) for _, grouped in grouped_panels)
+    fig_width = max(5.0, panel_count * (1.05 * max_labels + 1.8))
+    if panel_count == 1:
+        fig, ax = plt.subplots(figsize=(fig_width, 4.8))
+        axes = [ax]
+    else:
+        fig, axes_obj = plt.subplots(1, panel_count, figsize=(fig_width, 4.8), sharey=True)
+        axes = list(axes_obj.ravel())
 
     boxplot_kwargs = {
         "patch_artist": True,
@@ -74,29 +90,51 @@ def plot_hap_phenotype_box(
         "capprops": {"color": "#555555", "linewidth": 1.0},
         "boxprops": {"edgecolor": "#444444", "linewidth": 1.0},
     }
-    try:
-        box = ax.boxplot(data, tick_labels=labels, **boxplot_kwargs)
-    except TypeError:
-        box = ax.boxplot(data, labels=labels, **boxplot_kwargs)
-    for index, patch in enumerate(box["boxes"]):
-        patch.set_facecolor(PALETTE[index % len(PALETTE)])
-        patch.set_alpha(0.55)
 
     rng = random.Random(1729)
-    for x_pos, values in enumerate(data, start=1):
-        jitter = [x_pos + rng.uniform(-0.12, 0.12) for _ in values]
-        ax.scatter(jitter, values, s=18, color="#222222", alpha=0.72, linewidths=0, zorder=3)
+    for panel_index, (ax, (population, grouped)) in enumerate(zip(axes, grouped_panels)):
+        labels = list(grouped)
+        data = [grouped[label] for label in labels]
+        try:
+            box = ax.boxplot(data, tick_labels=labels, **boxplot_kwargs)
+        except TypeError:
+            box = ax.boxplot(data, labels=labels, **boxplot_kwargs)
+        for index, patch in enumerate(box["boxes"]):
+            patch.set_facecolor(PALETTE[index % len(PALETTE)])
+            patch.set_alpha(0.55)
 
-    ax.set_xlabel("Haplotype")
-    ax.set_ylabel(trait)
-    ax.set_title(title or f"{trait} by haplotype")
-    ax.grid(axis="y", color="#dddddd", linewidth=0.7, alpha=0.8)
-    ax.tick_params(axis="x", rotation=30 if max(len(label) for label in labels) > 7 else 0)
+        for x_pos, values in enumerate(data, start=1):
+            jitter = [x_pos + rng.uniform(-0.12, 0.12) for _ in values]
+            ax.scatter(jitter, values, s=18, color="#222222", alpha=0.72, linewidths=0, zorder=3)
 
-    if comparisons:
-        _annotate_comparisons(ax, records, trait, labels, comparisons, min_hap_size, method)
+        ax.set_xlabel("Haplotype")
+        if panel_index == 0:
+            ax.set_ylabel(trait)
+        panel_title = str(population) if population else (title or f"{trait} by haplotype")
+        ax.set_title(panel_title)
+        ax.grid(axis="y", color="#dddddd", linewidth=0.7, alpha=0.8)
+        ax.tick_params(axis="x", rotation=30 if max(len(label) for label in labels) > 7 else 0)
+
+        if comparisons:
+            _annotate_comparisons(ax, records, trait, labels, comparisons, min_hap_size, method, population)
+
+    if panel_count > 1 and title:
+        fig.suptitle(title)
+        fig.tight_layout(rect=(0, 0, 1, 0.94))
+    else:
+        fig.tight_layout()
 
     return save_figure(fig, output_path, fmt=fmt)
+
+
+def _resolve_population_strata(
+    records: Sequence[PhenotypeRecord],
+    populations: Sequence[str] | None,
+) -> list[str | None]:
+    if populations is not None:
+        return list(populations)
+    discovered = sort_haplotype_labels({record.population for record in records if record.population})
+    return discovered if discovered else [None]
 
 
 def _annotate_comparisons(
@@ -107,8 +145,15 @@ def _annotate_comparisons(
     comparisons: Sequence[tuple[str, str]],
     min_hap_size: int,
     method: str,
+    population: str | None,
 ) -> None:
-    rows = pairwise_statistics(records, traits=[trait], min_hap_size=min_hap_size, method=method)
+    rows = pairwise_statistics(
+        records,
+        traits=[trait],
+        min_hap_size=min_hap_size,
+        method=method,
+        populations=[population] if population else None,
+    )
     row_map = {frozenset((str(row["group1"]), str(row["group2"]))): row for row in rows}
     label_to_x = {label: idx for idx, label in enumerate(labels, start=1)}
 

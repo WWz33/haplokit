@@ -108,6 +108,7 @@ haplokit phenotype stat \
 haplokit phenotype box \
   --hapresult out/hapresult.tsv \
   --phenotypes phenotype.csv \
+  --population popgroup.txt \
   --trait yield \
   --min-hap-size 5 \
   --comparison Hap01,Hap02 \
@@ -120,6 +121,25 @@ haplokit phenotype box \
 default. Haplotype groups with fewer than `--min-hap-size` numeric observations are excluded
 per trait. When `--population/--pop-group` is provided, tests are run separately inside each
 population group and the output includes a `population` column.
+Missing phenotype values (`NA`, `NaN`, `null`, `.`, or empty cells) are ignored per trait, and
+the `effective_n` column reports how many non-missing samples entered each test stratum.
+
+Population-stratified example inputs are bundled in `data/example_phenotype_haplotypes.tsv`,
+`data/example_phenotype.csv`, and `data/popgroup.txt`:
+
+```bash
+haplokit phenotype box \
+  -H data/example_phenotype_haplotypes.tsv \
+  -P data/example_phenotype.csv \
+  -p data/popgroup.txt \
+  -t yield \
+  -m 4 \
+  -F png \
+  -T "Yield by haplotype and population" \
+  -o data/example_phenotype_pop_box.png
+```
+
+<img src="data/example_phenotype_pop_box.png" alt="Population-stratified phenotype boxplot" width="900">
 
 ## Usage Scenarios
 

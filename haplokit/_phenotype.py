@@ -59,6 +59,7 @@ STAT_COLUMNS = [
     "p_adjusted",
     "significance",
     "reject",
+    "effective_n",
 ]
 
 SUMMARY_COLUMNS = [
@@ -70,6 +71,7 @@ SUMMARY_COLUMNS = [
     "std",
     "min",
     "max",
+    "effective_n",
 ]
 
 _SAMPLE_ALIASES = {"sample", "samples", "accession", "accessions", "id", "ids", "individual", "individuals"}
@@ -231,7 +233,11 @@ def load_phenotype_dataset(
         records=tuple(records),
         traits=tuple(selected_traits),
         haplotypes=tuple(sort_haplotype_labels({record.haplotype for record in hap_records})),
-        populations=tuple(sort_haplotype_labels(set(population_map.values()))) if population_map else (),
+        populations=tuple(
+            dict.fromkeys([*population_map.values(), *(record.population for record in records if record.population)])
+        )
+        if population_map
+        else (),
         sample_count=len(hap_records),
         matched_sample_count=len(matched_samples),
     )
@@ -267,12 +273,14 @@ def summarize_groups(
     rows: list[dict[str, object]] = []
     for trait in selected_traits:
         for population in selected_populations:
-            for haplotype, values in group_values(
+            grouped = group_values(
                 record_list,
                 trait,
                 min_hap_size=min_hap_size,
                 population=population,
-            ).items():
+            )
+            effective_n = sum(len(values) for values in grouped.values())
+            for haplotype, values in grouped.items():
                 rows.append(
                     {
                         "trait": trait,
@@ -283,6 +291,7 @@ def summarize_groups(
                         "std": _std(values),
                         "min": min(values),
                         "max": max(values),
+                        "effective_n": effective_n,
                     }
                 )
     return rows
@@ -313,6 +322,7 @@ def pairwise_statistics(
 
             labels = list(grouped)
             values = [grouped[label] for label in labels]
+            effective_n = sum(len(group) for group in values)
             anova_f, anova_p = _anova(stats, values)
             pair_rows = _pairwise_rows(stats, labels, values, method)
             pair_count = len(pair_rows)
@@ -342,6 +352,7 @@ def pairwise_statistics(
                         "p_adjusted": p_adjusted,
                         "significance": significance_label(p_adjusted),
                         "reject": _finite(p_adjusted) and p_adjusted < alpha,
+                        "effective_n": effective_n,
                     }
                 )
     return rows

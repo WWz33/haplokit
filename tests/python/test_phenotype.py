@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from haplokit._phenotype import (
+    PhenotypeRecord,
     load_phenotype_dataset,
     pairwise_statistics,
     read_population_groups,
@@ -137,6 +138,95 @@ def test_phenotype_statistics_filters_small_haplotypes_and_writes_pairs(tmp_path
     assert {item["haplotype"] for item in summary} == {"Hap01", "Hap02"}
 
 
+def test_phenotype_statistics_ignores_missing_values_and_reports_effective_n(tmp_path: Path) -> None:
+    hapresult = tmp_path / "hapresult.tsv"
+    phenotype = tmp_path / "phenotype.csv"
+    _write_hapresult(hapresult)
+    phenotype.write_text(
+        "\n".join(
+            [
+                "sample,yield",
+                "S1,1",
+                "S2,NA",
+                "S3,3",
+                "S4,7",
+                "S5,8",
+                "S6,9",
+                "S7,.",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    dataset = load_phenotype_dataset(hapresult, phenotype, traits=["yield"])
+    rows = pairwise_statistics(dataset.records, traits=dataset.traits, min_hap_size=2, method="welch")
+    summary = summarize_groups(dataset.records, traits=dataset.traits, min_hap_size=2)
+
+    assert dataset.matched_sample_count == 7
+    assert len(dataset.records) == 5
+    assert rows[0]["count1"] == 2
+    assert rows[0]["count2"] == 3
+    assert rows[0]["effective_n"] == 5
+    assert {item["effective_n"] for item in summary} == {5}
+
+
+def test_phenotype_cli_reports_effective_n_for_missing_values(tmp_path: Path) -> None:
+    hapresult = tmp_path / "hapresult.tsv"
+    phenotype = tmp_path / "phenotype.csv"
+    stats_out = tmp_path / "stats.tsv"
+    summary_out = tmp_path / "summary.tsv"
+    _write_hapresult(hapresult)
+    phenotype.write_text(
+        "\n".join(
+            [
+                "sample,yield",
+                "S1,1",
+                "S2,NA",
+                "S3,3",
+                "S4,7",
+                "S5,8",
+                "S6,9",
+                "S7,.",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "phenotype",
+            "stat",
+            "--hapresult",
+            str(hapresult),
+            "--phenotypes",
+            str(phenotype),
+            "--trait",
+            "yield",
+            "--min-hap-size",
+            "2",
+            "--output",
+            str(stats_out),
+            "--summary-output",
+            str(summary_out),
+        ]
+    )
+
+    assert exit_code == 0
+    stats_lines = stats_out.read_text(encoding="utf-8").splitlines()
+    stat_header = stats_lines[0].split("\t")
+    stat_values = stats_lines[1].split("\t")
+    summary_lines = summary_out.read_text(encoding="utf-8").splitlines()
+    summary_header = summary_lines[0].split("\t")
+    summary_values = summary_lines[1].split("\t")
+
+    assert stat_header[-1] == "effective_n"
+    assert stat_values[-1] == "5"
+    assert summary_header[-1] == "effective_n"
+    assert summary_values[-1] == "5"
+
+
 def test_phenotype_statistics_stratify_by_population_group(tmp_path: Path) -> None:
     hapresult = tmp_path / "hapresult.tsv"
     phenotype = tmp_path / "phenotype.csv"
@@ -163,6 +253,33 @@ def test_phenotype_statistics_stratify_by_population_group(tmp_path: Path) -> No
     assert rows[0]["group1"] == "Hap01"
     assert rows[0]["group2"] == "Hap02"
     assert {item["population"] for item in summary} == {"PopA"}
+
+
+def test_phenotype_population_groups_include_unknown_for_missing_samples(tmp_path: Path) -> None:
+    hapresult = tmp_path / "hapresult.tsv"
+    phenotype = tmp_path / "phenotype.csv"
+    population = tmp_path / "partial_popgroup.tsv"
+    _write_hapresult(hapresult)
+    _write_phenotype(phenotype)
+    population.write_text(
+        "\n".join(
+            [
+                "sample\tpopulation",
+                "S1\tPopA",
+                "S2\tPopA",
+                "S4\tPopA",
+                "S5\tPopA",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    dataset = load_phenotype_dataset(hapresult, phenotype, traits=["yield"], population_file=population)
+    summary = summarize_groups(dataset.records, traits=dataset.traits, min_hap_size=1, populations=dataset.populations)
+
+    assert dataset.populations == ("PopA", "Unknown")
+    assert {item["population"] for item in summary} == {"PopA", "Unknown"}
 
 
 def test_phenotype_cli_stat_and_box_write_outputs(tmp_path: Path) -> None:
@@ -329,6 +446,8 @@ def test_phenotype_cli_accepts_short_options(capsys: pytest.CaptureFixture[str])
             "phenotype.csv",
             "-t",
             "yield",
+            "-p",
+            "popgroup.tsv",
             "-o",
             "box.svg",
             "-F",
@@ -343,11 +462,15 @@ def test_phenotype_cli_accepts_short_options(capsys: pytest.CaptureFixture[str])
             "tab",
             "-D",
             "comma",
+            "-G",
+            "tab",
             "-T",
             "Yield by haplotype",
         ]
     )
     assert box_args.phenotype_command == "box"
+    assert box_args.population_file == "popgroup.tsv"
+    assert box_args.population_delimiter == "tab"
     assert box_args.comparison == [("Hap01", "Hap02")]
     assert box_args.title == "Yield by haplotype"
 
@@ -378,6 +501,97 @@ def test_plot_hap_phenotype_box_is_exported(tmp_path: Path) -> None:
 
     assert rendered.exists()
     assert rendered.suffix == ".svg"
+
+
+def test_plot_hap_phenotype_box_facets_population_groups(tmp_path: Path) -> None:
+    hapresult = tmp_path / "hapresult.tsv"
+    phenotype = tmp_path / "phenotype.csv"
+    population = tmp_path / "popgroup.tsv"
+    _write_hapresult(hapresult)
+    _write_phenotype(phenotype)
+    _write_population(population)
+
+    rendered = plot_hap_phenotype_box(
+        hapresult,
+        phenotype,
+        "yield",
+        tmp_path / "yield_by_population.svg",
+        min_hap_size=1,
+        population_file=population,
+        fmt="svg",
+    )
+
+    assert rendered.exists()
+    assert rendered.suffix == ".svg"
+    rendered_text = rendered.read_text(encoding="utf-8")
+    assert "PopA" in rendered_text
+    assert "PopB" in rendered_text
+
+
+def test_plot_hap_phenotype_box_filters_records_per_population_panel(tmp_path: Path) -> None:
+    records = (
+        PhenotypeRecord("A1", "Hap01", "yield", 1.0, "PopA"),
+        PhenotypeRecord("A2", "Hap01", "yield", 1.2, "PopA"),
+        PhenotypeRecord("A3", "Hap02", "yield", 2.0, "PopA"),
+        PhenotypeRecord("A4", "Hap02", "yield", 2.2, "PopA"),
+        PhenotypeRecord("B1", "Hap03", "yield", 3.0, "PopB"),
+        PhenotypeRecord("B2", "Hap03", "yield", 3.2, "PopB"),
+        PhenotypeRecord("B3", "Hap04", "yield", 4.0, "PopB"),
+        PhenotypeRecord("B4", "Hap04", "yield", 4.2, "PopB"),
+    )
+
+    rendered = plot_hap_phenotype_box(
+        records,
+        trait="yield",
+        output_path=tmp_path / "population_filtered.svg",
+        min_hap_size=2,
+        fmt="svg",
+    )
+
+    rendered_text = rendered.read_text(encoding="utf-8")
+    assert "PopA" in rendered_text
+    assert "PopB" in rendered_text
+    assert rendered_text.count("Hap01") == 1
+    assert rendered_text.count("Hap02") == 1
+    assert rendered_text.count("Hap03") == 1
+    assert rendered_text.count("Hap04") == 1
+
+
+def test_phenotype_cli_box_accepts_population_group(tmp_path: Path) -> None:
+    hapresult = tmp_path / "hapresult.tsv"
+    phenotype = tmp_path / "phenotype.csv"
+    population = tmp_path / "popgroup.tsv"
+    box_out = tmp_path / "yield_by_population.svg"
+    _write_hapresult(hapresult)
+    _write_phenotype(phenotype)
+    _write_population(population)
+
+    exit_code = main(
+        [
+            "phenotype",
+            "box",
+            "--hapresult",
+            str(hapresult),
+            "--phenotypes",
+            str(phenotype),
+            "--trait",
+            "yield",
+            "--population",
+            str(population),
+            "--min-hap-size",
+            "1",
+            "--output",
+            str(box_out),
+            "--plot-format",
+            "svg",
+        ]
+    )
+
+    assert exit_code == 0
+    assert box_out.exists()
+    rendered_text = box_out.read_text(encoding="utf-8")
+    assert "PopA" in rendered_text
+    assert "PopB" in rendered_text
 
 
 def test_phenotype_cli_stat_accepts_population_group(tmp_path: Path) -> None:

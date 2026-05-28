@@ -214,6 +214,7 @@ def build_parser() -> HaolokitArgumentParser:
     box_parse = box.add_argument_group("Parsing options")
     box_input.add_argument("-H", "--hapresult", "--haplotypes", dest="haplotypes", required=True, help="haplokit hapresult.tsv or two-column sample-haplotype table")
     box_input.add_argument("-P", "--phenotypes", "--phenotype", "--pheno-file", dest="phenotypes", required=True, help="phenotype table; first column is sample ID, remaining columns are traits")
+    box_input.add_argument("-p", "--population", "--pop-group", dest="population_file", help="optional sample-to-population table; boxplots are faceted by population")
     box_plot.add_argument("-t", "--trait", required=True, help="phenotype trait/column to plot")
     box_plot.add_argument("-o", "--output", default="phenotype_box.png", help="output plot path")
     box_plot.add_argument("-F", "--plot-format", choices=["png", "pdf", "svg", "tiff"], default=None, help="plot format; defaults to output suffix")
@@ -223,6 +224,7 @@ def build_parser() -> HaolokitArgumentParser:
     box_compare.add_argument("-c", "--comparison", action="append", type=_comparison_value, default=[], help="pair to annotate, e.g. Hap01,Hap02; repeat for multiple pairs")
     box_parse.add_argument("-d", "--delimiter", choices=["auto", "tab", "comma"], default="auto", dest="hap_delimiter", help="delimiter for hapresult/sample-haplotype input")
     box_parse.add_argument("-D", "--phenotype-delimiter", choices=["auto", "tab", "comma"], default="auto", help="delimiter for phenotype input")
+    box_parse.add_argument("-G", "--population-delimiter", choices=["auto", "tab", "comma"], default="auto", help="delimiter for population input")
 
     return parser
 
@@ -810,6 +812,8 @@ def _run_phenotype(args) -> int:
             comparisons=args.comparison,
             hap_delimiter=args.hap_delimiter,
             phenotype_delimiter=args.phenotype_delimiter,
+            population_file=args.population_file,
+            population_delimiter=args.population_delimiter,
             title=args.title,
             fmt=args.plot_format,
         )

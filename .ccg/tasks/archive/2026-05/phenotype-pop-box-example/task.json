@@ -1,0 +1,12 @@
+{
+  "id": "phenotype-pop-box-example",
+  "title": "Add population-stratified phenotype boxplot example",
+  "status": "completed",
+  "complexity": "M",
+  "risk": "medium",
+  "domain": "python",
+  "currentPhase": "completed",
+  "nextAction": "Archive task and include artifacts in final changes",
+  "createdAt": "2026-05-29T00:44:52+08:00",
+  "branch": "master"
+}
