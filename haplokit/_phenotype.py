@@ -27,6 +27,7 @@ class PhenotypeRecord:
     haplotype: str
     trait: str
     value: float
+    population: str | None = None
 
 
 @dataclass(frozen=True)
@@ -34,12 +35,14 @@ class PhenotypeDataset:
     records: tuple[PhenotypeRecord, ...]
     traits: tuple[str, ...]
     haplotypes: tuple[str, ...]
+    populations: tuple[str, ...]
     sample_count: int
     matched_sample_count: int
 
 
 STAT_COLUMNS = [
     "trait",
+    "population",
     "group1",
     "group2",
     "count1",
@@ -60,6 +63,7 @@ STAT_COLUMNS = [
 
 SUMMARY_COLUMNS = [
     "trait",
+    "population",
     "haplotype",
     "count",
     "mean",
@@ -142,6 +146,39 @@ def read_phenotype_table(
     return phenotypes, tuple(selected_traits)
 
 
+def read_population_groups(path: str | Path, delimiter: str = "auto") -> dict[str, str]:
+    """Read sample-to-population assignments from a two-column CSV/TSV file."""
+    rows = _read_csv_rows(path, delimiter)
+    if not rows:
+        raise PhenotypeError(f"{path} is empty")
+
+    lowered = [_normalize_header(cell) for cell in rows[0]]
+    sample_idx = _find_alias_index(lowered, _SAMPLE_ALIASES)
+    group_idx = _find_alias_index(lowered, {"population", "pop", "group", "pop_group", "population_group"})
+    data_rows = rows[1:]
+    if sample_idx is None or group_idx is None:
+        if len(rows[0]) < 2:
+            raise PhenotypeError("population group input must contain at least two columns")
+        sample_idx = 0
+        group_idx = 1
+        data_rows = rows
+
+    groups: dict[str, str] = {}
+    for line_no, row in enumerate(data_rows, start=2):
+        if len(row) <= max(sample_idx, group_idx):
+            continue
+        sample = row[sample_idx].strip()
+        population = row[group_idx].strip()
+        if not sample or not population:
+            continue
+        if sample in groups:
+            raise PhenotypeError(f"duplicate sample ID in population group table at line {line_no}: {sample}")
+        groups[sample] = population
+    if not groups:
+        raise PhenotypeError("population group table did not contain any sample rows")
+    return groups
+
+
 def load_phenotype_dataset(
     haplotypes: str | Path | Sequence[SampleHaplotype],
     phenotypes: str | Path,
@@ -149,6 +186,8 @@ def load_phenotype_dataset(
     traits: Sequence[str] | None = None,
     hap_delimiter: str = "auto",
     phenotype_delimiter: str = "auto",
+    population_file: str | Path | None = None,
+    population_delimiter: str = "auto",
 ) -> PhenotypeDataset:
     """Join sample haplotypes with phenotype values in long-table form."""
     hap_records = (
@@ -160,6 +199,7 @@ def load_phenotype_dataset(
         raise PhenotypeError("no sample-haplotype assignments were found")
 
     phenotype_rows, selected_traits = read_phenotype_table(phenotypes, traits=traits, delimiter=phenotype_delimiter)
+    population_map = read_population_groups(population_file, delimiter=population_delimiter) if population_file else {}
     hap_by_sample = {record.sample: record.haplotype for record in hap_records}
     matched_samples = sorted(set(hap_by_sample) & set(phenotype_rows))
     if not matched_samples:
@@ -168,12 +208,21 @@ def load_phenotype_dataset(
     records: list[PhenotypeRecord] = []
     for sample in matched_samples:
         haplotype = hap_by_sample[sample]
+        population = population_map.get(sample, "Unknown") if population_map else None
         values = phenotype_rows[sample]
         for trait in selected_traits:
             parsed = _parse_numeric(values.get(trait, ""))
             if parsed is None:
                 continue
-            records.append(PhenotypeRecord(sample=sample, haplotype=haplotype, trait=trait, value=parsed))
+            records.append(
+                PhenotypeRecord(
+                    sample=sample,
+                    haplotype=haplotype,
+                    trait=trait,
+                    value=parsed,
+                    population=population,
+                )
+            )
 
     if not records:
         raise PhenotypeError("no numeric phenotype values were found for overlapping samples")
@@ -182,6 +231,7 @@ def load_phenotype_dataset(
         records=tuple(records),
         traits=tuple(selected_traits),
         haplotypes=tuple(sort_haplotype_labels({record.haplotype for record in hap_records})),
+        populations=tuple(sort_haplotype_labels(set(population_map.values()))) if population_map else (),
         sample_count=len(hap_records),
         matched_sample_count=len(matched_samples),
     )
@@ -193,10 +243,11 @@ def group_values(
     *,
     min_hap_size: int = 1,
     haplotypes: Sequence[str] | None = None,
+    population: str | None = None,
 ) -> dict[str, list[float]]:
     grouped: dict[str, list[float]] = defaultdict(list)
     for record in records:
-        if record.trait == trait:
+        if record.trait == trait and (population is None or record.population == population):
             grouped[record.haplotype].append(record.value)
 
     labels = list(haplotypes) if haplotypes is not None else sort_haplotype_labels(grouped)
@@ -208,23 +259,32 @@ def summarize_groups(
     *,
     traits: Sequence[str] | None = None,
     min_hap_size: int = 1,
+    populations: Sequence[str] | None = None,
 ) -> list[dict[str, object]]:
     record_list = list(records)
     selected_traits = list(traits) if traits is not None else _traits_from_records(record_list)
+    selected_populations = _population_strata(record_list, populations)
     rows: list[dict[str, object]] = []
     for trait in selected_traits:
-        for haplotype, values in group_values(record_list, trait, min_hap_size=min_hap_size).items():
-            rows.append(
-                {
-                    "trait": trait,
-                    "haplotype": haplotype,
-                    "count": len(values),
-                    "mean": _mean(values),
-                    "std": _std(values),
-                    "min": min(values),
-                    "max": max(values),
-                }
-            )
+        for population in selected_populations:
+            for haplotype, values in group_values(
+                record_list,
+                trait,
+                min_hap_size=min_hap_size,
+                population=population,
+            ).items():
+                rows.append(
+                    {
+                        "trait": trait,
+                        "population": population or "ALL",
+                        "haplotype": haplotype,
+                        "count": len(values),
+                        "mean": _mean(values),
+                        "std": _std(values),
+                        "min": min(values),
+                        "max": max(values),
+                    }
+                )
     return rows
 
 
@@ -236,50 +296,54 @@ def pairwise_statistics(
     method: str = "welch",
     adjust: str = "bonferroni",
     alpha: float = 0.05,
+    populations: Sequence[str] | None = None,
 ) -> list[dict[str, object]]:
     """Compute per-trait ANOVA plus pairwise haplotype comparisons."""
     stats = _require_scipy()
     record_list = list(records)
     selected_traits = list(traits) if traits is not None else _traits_from_records(record_list)
+    selected_populations = _population_strata(record_list, populations)
     rows: list[dict[str, object]] = []
 
     for trait in selected_traits:
-        grouped = group_values(record_list, trait, min_hap_size=min_hap_size)
-        if len(grouped) < 2:
-            continue
+        for population in selected_populations:
+            grouped = group_values(record_list, trait, min_hap_size=min_hap_size, population=population)
+            if len(grouped) < 2:
+                continue
 
-        labels = list(grouped)
-        values = [grouped[label] for label in labels]
-        anova_f, anova_p = _anova(stats, values)
-        pair_rows = _pairwise_rows(stats, labels, values, method)
-        pair_count = len(pair_rows)
+            labels = list(grouped)
+            values = [grouped[label] for label in labels]
+            anova_f, anova_p = _anova(stats, values)
+            pair_rows = _pairwise_rows(stats, labels, values, method)
+            pair_count = len(pair_rows)
 
-        effective_adjust = "none" if method == "tukey" else adjust
-        for group1, group2, pair_stat, p_value in pair_rows:
-            vals1 = grouped[group1]
-            vals2 = grouped[group2]
-            p_adjusted = _adjust_p_value(p_value, pair_count, effective_adjust)
-            rows.append(
-                {
-                    "trait": trait,
-                    "group1": group1,
-                    "group2": group2,
-                    "count1": len(vals1),
-                    "count2": len(vals2),
-                    "mean1": _mean(vals1),
-                    "mean2": _mean(vals2),
-                    "std1": _std(vals1),
-                    "std2": _std(vals2),
-                    "anova_f": anova_f,
-                    "anova_p": anova_p,
-                    "method": method,
-                    "pairwise_stat": pair_stat,
-                    "p_value": p_value,
-                    "p_adjusted": p_adjusted,
-                    "significance": significance_label(p_adjusted),
-                    "reject": _finite(p_adjusted) and p_adjusted < alpha,
-                }
-            )
+            effective_adjust = "none" if method == "tukey" else adjust
+            for group1, group2, pair_stat, p_value in pair_rows:
+                vals1 = grouped[group1]
+                vals2 = grouped[group2]
+                p_adjusted = _adjust_p_value(p_value, pair_count, effective_adjust)
+                rows.append(
+                    {
+                        "trait": trait,
+                        "population": population or "ALL",
+                        "group1": group1,
+                        "group2": group2,
+                        "count1": len(vals1),
+                        "count2": len(vals2),
+                        "mean1": _mean(vals1),
+                        "mean2": _mean(vals2),
+                        "std1": _std(vals1),
+                        "std2": _std(vals2),
+                        "anova_f": anova_f,
+                        "anova_p": anova_p,
+                        "method": method,
+                        "pairwise_stat": pair_stat,
+                        "p_value": p_value,
+                        "p_adjusted": p_adjusted,
+                        "significance": significance_label(p_adjusted),
+                        "reject": _finite(p_adjusted) and p_adjusted < alpha,
+                    }
+                )
     return rows
 
 
@@ -414,6 +478,13 @@ def _reject_duplicate_samples(records: Sequence[SampleHaplotype], source: str) -
 
 def _traits_from_records(records: Sequence[PhenotypeRecord]) -> list[str]:
     return list(dict.fromkeys(record.trait for record in records))
+
+
+def _population_strata(records: Sequence[PhenotypeRecord], populations: Sequence[str] | None) -> list[str | None]:
+    if populations is not None:
+        return list(populations)
+    discovered = sort_haplotype_labels({record.population for record in records if record.population})
+    return discovered if discovered else [None]
 
 
 def _require_scipy():

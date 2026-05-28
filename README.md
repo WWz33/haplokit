@@ -99,6 +99,7 @@ columns as numeric traits.
 haplokit phenotype stat \
   --hapresult out/hapresult.tsv \
   --phenotypes phenotype.csv \
+  --population popgroup.txt \
   --trait yield \
   --min-hap-size 5 \
   --output yield_stats.tsv \
@@ -117,7 +118,8 @@ haplokit phenotype box \
 `stat` runs one-way ANOVA per trait and pairwise haplotype tests. Pairwise methods are
 `welch` (default), `student`, `mannwhitney`, and `tukey`; p-values are Bonferroni-adjusted by
 default. Haplotype groups with fewer than `--min-hap-size` numeric observations are excluded
-per trait.
+per trait. When `--population/--pop-group` is provided, tests are run separately inside each
+population group and the output includes a `population` column.
 
 ## Usage Scenarios
 

@@ -164,8 +164,10 @@ def build_parser() -> HaolokitArgumentParser:
     stat.add_argument("--min-hap-size", type=_positive_int_value, default=5)
     stat.add_argument("--method", choices=["welch", "student", "mannwhitney", "tukey"], default="welch")
     stat.add_argument("--adjust", choices=["bonferroni", "none"], default="bonferroni")
+    stat.add_argument("-p", "--population", "--pop-group", dest="population_file")
     stat.add_argument("--delimiter", choices=["auto", "tab", "comma"], default="auto", dest="hap_delimiter")
     stat.add_argument("--phenotype-delimiter", choices=["auto", "tab", "comma"], default="auto")
+    stat.add_argument("--population-delimiter", choices=["auto", "tab", "comma"], default="auto")
 
     box = phenotype_subparsers.add_parser("box")
     box.add_argument("--hapresult", "--haplotypes", dest="haplotypes", required=True)
@@ -731,6 +733,8 @@ def _run_phenotype(args) -> int:
             traits=args.traits or None,
             hap_delimiter=args.hap_delimiter,
             phenotype_delimiter=args.phenotype_delimiter,
+            population_file=args.population_file,
+            population_delimiter=args.population_delimiter,
         )
         rows = pairwise_statistics(
             dataset.records,
@@ -738,6 +742,7 @@ def _run_phenotype(args) -> int:
             min_hap_size=args.min_hap_size,
             method=args.method,
             adjust=args.adjust,
+            populations=dataset.populations or None,
         )
         write_stat_tsv(rows, args.output)
         if args.summary_output:
@@ -745,6 +750,7 @@ def _run_phenotype(args) -> int:
                 dataset.records,
                 traits=dataset.traits,
                 min_hap_size=args.min_hap_size,
+                populations=dataset.populations or None,
             )
             write_summary_tsv(summary_rows, args.summary_output)
         return 0

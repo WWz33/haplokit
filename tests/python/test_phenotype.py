@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
 from haplokit._phenotype import (
     load_phenotype_dataset,
     pairwise_statistics,
+    read_population_groups,
     read_sample_haplotypes,
     summarize_groups,
 )
@@ -53,6 +54,25 @@ def _write_phenotype(path: Path) -> None:
                 "S5,8,21",
                 "S6,9,22",
                 "S7,100,30",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def _write_population(path: Path) -> None:
+    path.write_text(
+        "\n".join(
+            [
+                "sample\tpopulation",
+                "S1\tPopA",
+                "S2\tPopA",
+                "S3\tPopB",
+                "S4\tPopA",
+                "S5\tPopA",
+                "S6\tPopB",
+                "S7\tPopB",
             ]
         )
         + "\n",
@@ -115,6 +135,34 @@ def test_phenotype_statistics_filters_small_haplotypes_and_writes_pairs(tmp_path
     assert rows[0]["mean1"] == 2.0
     assert rows[0]["mean2"] == 8.0
     assert {item["haplotype"] for item in summary} == {"Hap01", "Hap02"}
+
+
+def test_phenotype_statistics_stratify_by_population_group(tmp_path: Path) -> None:
+    hapresult = tmp_path / "hapresult.tsv"
+    phenotype = tmp_path / "phenotype.csv"
+    population = tmp_path / "popgroup.tsv"
+    _write_hapresult(hapresult)
+    _write_phenotype(phenotype)
+    _write_population(population)
+
+    pop_map = read_population_groups(population)
+    dataset = load_phenotype_dataset(hapresult, phenotype, traits=["yield"], population_file=population)
+    rows = pairwise_statistics(
+        dataset.records,
+        traits=dataset.traits,
+        min_hap_size=2,
+        method="welch",
+        populations=dataset.populations,
+    )
+    summary = summarize_groups(dataset.records, traits=dataset.traits, min_hap_size=2, populations=dataset.populations)
+
+    assert pop_map["S1"] == "PopA"
+    assert dataset.populations == ("PopA", "PopB")
+    assert len(rows) == 1
+    assert rows[0]["population"] == "PopA"
+    assert rows[0]["group1"] == "Hap01"
+    assert rows[0]["group2"] == "Hap02"
+    assert {item["population"] for item in summary} == {"PopA"}
 
 
 def test_phenotype_cli_stat_and_box_write_outputs(tmp_path: Path) -> None:
@@ -243,3 +291,37 @@ def test_plot_hap_phenotype_box_is_exported(tmp_path: Path) -> None:
 
     assert rendered.exists()
     assert rendered.suffix == ".svg"
+
+
+def test_phenotype_cli_stat_accepts_population_group(tmp_path: Path) -> None:
+    hapresult = tmp_path / "hapresult.tsv"
+    phenotype = tmp_path / "phenotype.csv"
+    population = tmp_path / "popgroup.tsv"
+    stats_out = tmp_path / "stratified_stats.tsv"
+    _write_hapresult(hapresult)
+    _write_phenotype(phenotype)
+    _write_population(population)
+
+    exit_code = main(
+        [
+            "phenotype",
+            "stat",
+            "--hapresult",
+            str(hapresult),
+            "--phenotypes",
+            str(phenotype),
+            "--trait",
+            "yield",
+            "--population",
+            str(population),
+            "--min-hap-size",
+            "2",
+            "--output",
+            str(stats_out),
+        ]
+    )
+
+    assert exit_code == 0
+    lines = stats_out.read_text(encoding="utf-8").splitlines()
+    assert lines[0].split("\t")[:4] == ["trait", "population", "group1", "group2"]
+    assert lines[1].split("\t")[:4] == ["yield", "PopA", "Hap01", "Hap02"]
