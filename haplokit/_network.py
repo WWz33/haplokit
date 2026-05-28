@@ -23,7 +23,9 @@ from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.patches import Circle, Patch, Wedge
+from matplotlib.offsetbox import AnchoredOffsetbox, DrawingArea, HPacker, TextArea, VPacker
+from matplotlib.patches import Circle, Rectangle, Wedge
+from matplotlib.text import Text
 
 from ._palette import PALETTE, save_figure
 from .network import compute_tcs_network
@@ -396,10 +398,8 @@ def plot_hap_network(
 
     fig_w = max(6.5, min(11.0, span_x * 0.55 + 2.0))
     fig_h = max(5.5, min(10.0, span_y * 0.55 + 2.0))
-    # Reserve top strip for the size legend
-    top_strip = 0.10
     fig, ax = plt.subplots(figsize=(fig_w, fig_h))
-    fig.subplots_adjust(left=0.04, right=0.96, top=1.0 - top_strip, bottom=0.04)
+    fig.subplots_adjust(left=0.04, right=0.96, top=0.96, bottom=0.04)
     ax.set_aspect("equal")
     ax.set_xlim(xmin, xmax)
     ax.set_ylim(ymin, ymax)
@@ -456,71 +456,67 @@ def plot_hap_network(
                 ha="center", va="bottom",
                 color="#1a1a1a", zorder=8)
 
-    # ---- Population legend (right side) -----------------------------------
-    if pop_color:
-        handles = [
-            Patch(facecolor=col, edgecolor="#666", label=name)
-            for name, col in pop_color.items()
-        ]
-        leg = ax.legend(
-            handles=handles,
-            fontsize=legend_font_size,
-            loc="center left",
-            bbox_to_anchor=(1.005, 0.5),
-            frameon=False,
-            title="Population",
-            title_fontsize=legend_font_size,
-        )
-        leg._legend_box.align = "left"
-
-    # ---- Size legend (PopART concentric circles style) ---------------------
-    unique_counts = sorted({int(c) for c in hap_counts})
-    if len(unique_counts) > 1:
-        hi = unique_counts[-1]
-        lo = unique_counts[0]
-
-        raw_hi = np.sqrt(float(hi))
-        raw_lo = np.sqrt(float(lo))
-        scale_factor = np.sqrt(max(counts.max(), 1.0))
-        r_hi = r_min + (raw_hi / scale_factor) * (r_max - r_min)
-        r_lo = r_min + (raw_lo / scale_factor) * (r_max - r_min)
-
-        size_ax = fig.add_axes((0.04, 1.0 - top_strip + 0.005, 0.92, top_strip - 0.02))
-        size_ax.set_xlim(0, 1)
-        size_ax.set_ylim(0, 1)
-        size_ax.axis("off")
-
-        # Normalize to fit legend axes
-        legend_scale = 0.40 / r_hi if r_hi > 0 else 1.0
-        R_hi = r_hi * legend_scale
-        R_lo = r_lo * legend_scale
-
-        cx = 0.50
-        # Large circle centered so bottom touches baseline
-        baseline_y = 0.10
-        cy_hi = baseline_y + R_hi
-
-        # Large circle (N=hi)
-        size_ax.add_patch(plt.Circle(
-            (cx, cy_hi), R_hi,
-            facecolor="none", edgecolor="#1a1a1a",
-            linewidth=0.8, zorder=2,
-        ))
-        # Small circle (N=lo) nested at bottom of large circle
-        cy_lo = baseline_y + R_lo
-        size_ax.add_patch(plt.Circle(
-            (cx, cy_lo), R_lo,
-            facecolor="none", edgecolor="#1a1a1a",
-            linewidth=0.8, zorder=3,
-        ))
-
-        # Labels
-        size_ax.text(cx + R_hi + 0.04, cy_hi, f"N={hi}",
-                     fontsize=legend_font_size, ha="left", va="center", color="#333")
-        size_ax.text(cx + R_lo + 0.04, cy_lo, f"N={lo}",
-                     fontsize=legend_font_size, ha="left", va="center", color="#333")
+    # ---- Legend: population colors + sample-size circles ------------------
+    _add_lower_left_legend(ax, pop_color, hap_counts, legend_font_size)
 
     # Title intentionally NOT rendered (parameter accepted only for compat).
     _ = title
 
     return save_figure(fig, output_path, dpi=dpi, fmt=fmt)
+
+
+def _add_lower_left_legend(
+    ax,
+    pop_color: dict[str, str],
+    counts: list[int],
+    legend_font_size: float,
+) -> None:
+    rows = [_legend_color_row(name, color, legend_font_size) for name, color in pop_color.items()]
+    size_area = _legend_size_area(counts, legend_font_size)
+    if size_area is not None:
+        rows.append(size_area)
+    if not rows:
+        return
+
+    legend_box = VPacker(children=rows, align="left", pad=0, sep=1.5)
+    anchored = AnchoredOffsetbox(
+        loc="lower left",
+        child=legend_box,
+        frameon=False,
+        pad=0.0,
+        borderpad=0.8,
+    )
+    ax.add_artist(anchored)
+
+
+def _legend_color_row(name: str, color: str, legend_font_size: float):
+    swatch = DrawingArea(12, 9, 0, 0)
+    swatch.add_artist(Rectangle((1.5, 1.0), 8.0, 7.0, facecolor=color, edgecolor="#999999", linewidth=0.6))
+    label = TextArea(str(name), textprops={"fontsize": legend_font_size, "color": "#222222"})
+    return HPacker(children=[swatch, label], align="center", pad=0, sep=2.5)
+
+
+def _legend_size_area(counts: list[int], legend_font_size: float):
+    unique_counts = sorted({int(count) for count in counts if count > 0})
+    if len(unique_counts) < 2:
+        return None
+
+    hi = unique_counts[-1]
+    lo = unique_counts[0]
+    area = DrawingArea(44, 34, 0, 0)
+    cx = 14.0
+    r_hi = 12.5
+    cy_hi = 17.0
+    label_size_hi = max(legend_font_size - 1.0, 4.5)
+    label_size_lo = max(legend_font_size - 1.4, 4.2)
+
+    area.add_artist(Circle((cx, cy_hi), r_hi, facecolor="none", edgecolor="#222222", linewidth=0.8))
+    area.add_artist(Text(cx, cy_hi, str(hi), fontsize=label_size_hi, ha="center", va="center", color="#333333"))
+
+    if hi != lo:
+        r_lo = max(4.8, r_hi * math.sqrt(lo / hi))
+        cy_lo = cy_hi - (r_hi - r_lo)
+        area.add_artist(Circle((cx, cy_lo), r_lo, facecolor="none", edgecolor="#222222", linewidth=0.8))
+        area.add_artist(Text(cx, cy_lo, str(lo), fontsize=label_size_lo, ha="center", va="center", color="#333333"))
+
+    return area

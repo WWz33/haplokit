@@ -26,6 +26,7 @@ def plot_hap_table(
     title_font_size: float = 9,
     dpi: int = 600,
     fmt: str | None = None,
+    figsize: tuple[float, float] | None = None,
 ) -> Path:
     """Publication-quality haplotype summary table.
 
@@ -110,7 +111,7 @@ def plot_hap_table(
     fig_w = max(5, total_w + 1.0)
     fig_h = max(3, total_h + 1.6)
 
-    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+    fig, ax = plt.subplots(figsize=figsize or (fig_w, fig_h))
     ax.set_xlim(0, total_w)
     ax.set_ylim(0, total_h)
     ax.invert_yaxis()

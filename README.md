@@ -1,6 +1,6 @@
 # haplokit
 
-CLI haplotype viewer with bcftools-like selectors, C++ backend, and Python plotting.
+CLI haplotype viewer with C++ backend, phenotype statistics, and Python plotting.
 
 <!-- README-I18N:START -->
 
@@ -88,63 +88,6 @@ Output:
 - `out/hapresult.tsv` — per-sample haplotype detail
 - `out/hap_summary.tsv` — haplotype count summary
 
-## Phenotype Statistics and Plots
-
-`haplokit phenotype` joins haplotype assignments with sample phenotype tables. It accepts the
-`hapresult.tsv` written by `haplokit view` or a simple two-column table named like
-`samples,haplotypes`. Phenotype tables use the first column as sample ID and the remaining
-columns as numeric traits.
-
-```bash
-haplokit phenotype stat \
-  --hapresult out/hapresult.tsv \
-  --phenotypes phenotype.csv \
-  --population popgroup.txt \
-  --trait yield \
-  --min-hap-size 5 \
-  --output yield_stats.tsv \
-  --summary-output yield_summary.tsv
-
-haplokit phenotype box \
-  --hapresult out/hapresult.tsv \
-  --phenotypes phenotype.csv \
-  --population popgroup.txt \
-  --trait yield \
-  --min-hap-size 5 \
-  --comparison Hap01,Hap02 \
-  --plot-format pdf \
-  --output yield_box.pdf
-```
-
-`stat` runs one-way ANOVA per trait and pairwise haplotype tests. Pairwise methods are
-`welch` (default), `student`, `mannwhitney`, and `tukey`; p-values are Bonferroni-adjusted by
-default. Haplotype groups with fewer than `--min-hap-size` numeric observations are excluded
-per trait. When `--population/--pop-group` is provided, tests are run separately inside each
-population group and the output includes a `population` column.
-Missing phenotype values (`NA`, `NaN`, `null`, `.`, or empty cells) are ignored per trait, and
-the `effective_n` column reports how many non-missing samples entered each test stratum.
-With `--population`, phenotype boxplots are grouped by population with haplotypes shown as
-side-by-side boxes. Star annotations are drawn inside the plot for within-population haplotype
-comparisons and between-population comparisons of the same haplotype; single-haplotype plots
-show only between-population comparisons.
-
-Population-stratified example inputs are bundled in `data/example_phenotype_haplotypes.tsv`,
-`data/example_phenotype.csv`, and `data/popgroup.txt`:
-
-```bash
-haplokit phenotype box \
-  -H data/example_phenotype_haplotypes.tsv \
-  -P data/example_phenotype.csv \
-  -p data/popgroup.txt \
-  -t yield \
-  -m 4 \
-  -F png \
-  -T "Yield by haplotype and population" \
-  -o data/example_phenotype_pop_box.png
-```
-
-<img src="data/example_phenotype_pop_box.png" alt="Population-stratified phenotype boxplot" width="900">
-
 ## Usage Scenarios
 
 ### 1. Region query — strict haplotype grouping
@@ -184,7 +127,7 @@ chr1	.	CDS	1200	1500	.	+	0	ID=cds1;Parent=gene1
 
 Adds SnpEff-style functional category strip (CDS, UTR, exon, intron, intergenic) above variant positions. Writes figure (`out/*.png`) + `gff_ann_summary.tsv`.
 
-<img src="plottable.png" alt="Haplotype summary table" width="800">
+<img src="data/figure/haplotype_table.png" alt="Haplotype summary table" width="800">
 
 Figure components:
 
@@ -224,6 +167,7 @@ haplokit view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --geo data/sample_chin
 ```
 
 `sample_china_geo.txt` and `sample_world_geo.txt` are tab-separated coordinate examples (`ID<TAB>longitude<TAB>latitude<TAB>Hap`). The `Hap` column is included for standalone plotting examples; CLI map plotting derives each sample's haplotype from the VCF result.
+Use `--show-counts` to draw sample-count labels at map pie centers, or `--hide-counts` to keep them hidden explicitly.
 
 ```text
 ID	longitude	latitude	Hap
@@ -232,15 +176,15 @@ C2	116.40	39.90	H002
 C3	116.40	39.90	H001
 ```
 
-<img src="plotmap.png" alt="Haplotype geographic distribution" width="600">
+<img src="data/figure/haplotype_map_china.png" alt="Haplotype geographic distribution" width="600">
 
 World example resources are included under `data/`:
 
 - `sample_world_geo.txt` keeps the same `ID/Hap` composition as `sample_china_geo.txt`, but replaces coordinates with global sampling locations.
 - `world_countries.shp`, `world_countries.shx`, and `world_countries.dbf` provide the example world map shapefile.
-- `sample_world_geo_map.png` is the generated world map example.
+- `haplotype_map_world.png` is the generated world map example under `data/figure/`.
 
-<img src="data/sample_world_geo_map.png" alt="World haplotype geographic distribution" width="600">
+<img src="data/figure/haplotype_map_world.png" alt="World haplotype geographic distribution" width="600">
 
 Figure components:
 
@@ -266,9 +210,77 @@ Figure components:
 - **Hatch marks across edges**: one tick per mutation (popart convention)
 - **Small black dots**: inferred median (intermediate) vertices, where TCS infers ancestors
 
-![Network algorithms comparison — MSN / TCS / MJN](plotnetwork_3algo.png)
+![Network algorithms comparison — MSN / TCS / MJN](data/figure/haplotype_network_algorithms.png)
 
-### 7. BED batch processing
+### 7. Phenotype statistics module
+
+`haplokit phenotype` joins haplotype assignments with sample phenotype tables. It accepts the
+`hapresult.tsv` written by `haplokit view` or a simple two-column table named like
+`samples,haplotypes`. Phenotype tables use the first column as sample ID and the remaining
+columns as numeric traits. The module keeps numeric testing in the backend data layer and uses
+the plotting layer only for visualization.
+
+```bash
+haplokit phenotype \
+  --hapresult out/hapresult.tsv \
+  --phenotypes phenotype.csv \
+  --population popgroup.txt \
+  --trait yield \
+  --min-hap-size 5 \
+  --method welch \
+  --output yield_stats.tsv \
+  --summary-output yield_summary.tsv
+
+haplokit phenotype \
+  --hapresult out/hapresult.tsv \
+  --phenotypes phenotype.csv \
+  --population popgroup.txt \
+  --trait yield \
+  --min-hap-size 5 \
+  --method welch \
+  --output yield_stats.tsv \
+  --plot-box \
+  --comparison Hap01,Hap02 \
+  --figsize 7,4 \
+  --plot-format pdf \
+  --box-output yield_box.pdf
+```
+
+The phenotype statistics workflow runs one-way ANOVA per trait and pairwise haplotype tests.
+Pairwise methods are explicitly selectable with `--method`: `welch` (default), `student`,
+`mannwhitney`, and `tukey`; p-values are Bonferroni-adjusted by default for non-Tukey tests.
+Haplotype groups with fewer than `--min-hap-size` numeric observations are excluded per trait.
+When `--population/--pop-group` is provided, tests are run separately inside each population
+group and the output includes a `population` column. Missing phenotype values (`NA`, `NaN`,
+`null`, `.`, or empty cells) are ignored per trait, and the `effective_n` column reports how
+many non-missing samples entered each test stratum.
+
+`--plot-box` adds the box figure as a visualization of the same phenotype statistics and
+grouping logic. It uses the same haplotype filtering, population strata, and comparison rules,
+then renders one trait as a publication-oriented boxplot. With `--population`, boxes are grouped
+by population with haplotypes shown side by side. Star annotations are drawn inside the plot for
+within-population haplotype comparisons and between-population comparisons of the same haplotype;
+single-haplotype plots show only between-population comparisons.
+
+Population-stratified example inputs are bundled in `data/example_phenotype_haplotypes.tsv`,
+`data/example_phenotype.csv`, and `data/popgroup.txt`:
+
+```bash
+haplokit phenotype \
+  -H data/example_phenotype_haplotypes.tsv \
+  -P data/example_phenotype.csv \
+  -p data/popgroup.txt \
+  -t yield \
+  -m 4 \
+  --plot-box \
+  -F png \
+  -T "Yield by haplotype and population" \
+  -b data/figure/phenotype_population_boxplot.png
+```
+
+<img src="data/figure/phenotype_population_boxplot.png" alt="Population-stratified phenotype boxplot" width="900">
+
+### 8. BED batch processing
 
 Process multiple regions in one run.
 
@@ -285,7 +297,7 @@ chr2	5000	6000
 
 Each BED row is processed independently. Output files are suffixed by region slug (`_chr1_1000_2000`).
 
-### 8. Approximate grouping
+### 9. Approximate grouping
 
 Cluster similar haplotypes within a tolerance.
 
@@ -295,7 +307,7 @@ haplokit view in.vcf.gz -r chr1:1000-2000 --max-diff 0.2 --output-file out
 
 `--max-diff` (0–1): haplotypes differing at ≤ 20% of positions merge into one group. Grouping mode changes from `strict-region` to `approx-region`.
 
-### 9. Sample subset + imputation
+### 10. Sample subset + imputation
 
 Restrict analysis to specific samples; fill missing calls as reference.
 
@@ -351,32 +363,77 @@ Format set by `--plot-format` (default `png`). Named per region slug: `<prefix>.
 
 ## Full Parameters
 
+### `haplokit view`
+
 ```
-haplokit view <input_vcf> (-r <region> | -R <regions.bed>) [options]
+haplokit view [input_vcf] (-r <region> | -R <regions.bed> | --gene-id <id> | --gene-list <file>) [options]
 ```
 
 `<input_vcf>` must be an indexed VCF/BCF (`.vcf.gz` + `.tbi`, or BCF index).
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
+| `input_vcf` | path | — | Indexed VCF/BCF input path |
 | `-r, --region` | string | — | `chr:start-end` or `chr:pos` |
 | `-R, --regions-file` | path | — | BED file (≥3 tab-separated columns) |
+| `-G, --gene-id` | string | — | Resolve one gene ID through `--gff/--gff3` |
+| `-l, --gene-list` | path | — | File with one gene ID per line; requires `--gff/--gff3` |
 | `-S, --samples-file` | path | — | One sample ID per line |
-| `--by` | `auto\|region\|site` | `auto` | Grouping mode; auto infers from selector shape |
-| `--impute` | flag | off | Impute missing GT as reference |
-| `-g, --gff` | path | — | GFF3/GTF for gene annotation |
+| `-b, --by` | `auto\|region\|site` | `auto` | Grouping mode; auto infers from selector shape |
+| `-i, --impute` | flag | off | Impute missing GT as reference |
+| `-m, --max-diff` | float [0,1] | — | Approximate grouping threshold |
+| `-g, --gff3, --gff` | path | — | GFF3/GTF for gene selectors and plots |
+| `-u, --upstream` | integer | `0` | Upstream bases added to gene selectors |
+| `-d, --downstream` | integer | `0` | Downstream bases added to gene selectors |
+| `-a, --strand-aware` | flag | off | Apply upstream/downstream relative to gene strand |
+| `-o, --output` | `summary\|detail` | `summary` | JSONL mode only; TSV always writes both |
+| `-f, --output-format` | `tsv\|jsonl` | `tsv` | Output format |
+| `-O, --output-file` | path | — | Output directory, prefix, or JSONL file |
+| `-P, --plot` | flag | off | Generate haplotype table figure |
+| `-F, --plot-format` | `png\|pdf\|svg\|tiff` | `png` | Figure format |
+| `-z, --figsize` | `WIDTH,HEIGHT` | auto | Figure size in inches for table and map plots |
 | `-p, --population` | path | — | Tab-separated sample → population map |
-| `--output` | `summary\|detail` | `summary` | JSONL mode only; TSV always writes both |
-| `--output-format` | `tsv\|jsonl` | `tsv` | Output format |
-| `--output-file` | path | — | Output directory, prefix, or JSONL file |
-| `--plot` | flag | off | Generate haplotype table figure |
-| `--plot-format` | `png\|pdf\|svg\|tiff` | `png` | Figure format |
-| `--max-diff` | float [0,1] | — | Approximate grouping threshold |
-| `--geo` | path | — | Sample geographic coordinates for map |
-| `--network` | flag | off | Render haplotype network (popart-style) |
-| `--network-method` | `tcs`/`msn`/`mjn` | `tcs` | Network inference algorithm |
+| `-e, --geo` | path | — | Sample geographic coordinates for map |
+| `-C, --map-facecolor` | color | `#f5f5f0` | Geographic map background color |
+| `--show-counts` / `--hide-counts` | flag | hidden | Show or hide sample-count labels at map pie centers |
+| `-n, --network` | flag | off | Render haplotype network (popart-style) |
+| `-N, --network-method` | `tcs`/`msn`/`mjn` | `tcs` | Network inference algorithm |
+| `-H, --hap-prefix` | string | `Hap` | Haplotype label prefix |
+| `-D, --hap-pad` | integer | `2` | Zero-padding width for haplotype labels |
 
-Selector rules: `-r` and `-R` are mutually exclusive and one is required. `--by site` only valid with `-r chr:pos`.
+Selector rules: exactly one of `-r`, `-R`, `--gene-id`, or `--gene-list` is required. Gene
+selectors require `--gff/--gff3`; `--upstream`, `--downstream`, and `--strand-aware` are only
+valid with gene selectors. `--by site` is only valid with `-r chr:pos`.
+
+### `haplokit phenotype`
+
+```
+haplokit phenotype -H <hapresult.tsv> -P <phenotype.csv> [options]
+```
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `-H, --hapresult, --haplotypes` | path | required | `hapresult.tsv` or two-column sample-haplotype table |
+| `-P, --phenotypes, --phenotype, --pheno-file` | path | required | Phenotype table; first column is sample ID, remaining columns are traits |
+| `-p, --population, --pop-group` | path | — | Sample-to-population table; tests and boxplots are stratified by population |
+| `-t, --trait` | string | all numeric traits | Trait to analyze; repeat to select multiple traits |
+| `-m, --min-hap-size` | integer | `5` | Minimum numeric samples per haplotype within each test stratum |
+| `-M, --method` | `welch\|student\|mannwhitney\|tukey` | `welch` | Explicit pairwise test formula/method |
+| `-a, --adjust` | `bonferroni\|none` | `bonferroni` | P-value adjustment for non-Tukey pairwise tests |
+| `-o, --output` | path | `phenotype_stats.tsv` | Output TSV for pairwise statistics |
+| `-s, --summary-output` | path | — | Optional per-haplotype summary statistics TSV |
+| `-B, --plot-box` | flag | off | Also render a phenotype boxplot for the selected trait |
+| `-b, --box-output` | path | `phenotype_box.png` | Output path for `--plot-box` |
+| `-F, --plot-format` | `png\|pdf\|svg\|tiff` | output suffix | Boxplot format |
+| `-z, --figsize` | `WIDTH,HEIGHT` | auto | Boxplot figure size in inches |
+| `-T, --title` | string | — | Boxplot title |
+| `-c, --comparison` | `HapA,HapB` | — | Haplotype pair to annotate in `--plot-box`; repeat for multiple pairs |
+| `-d, --delimiter` | `auto\|tab\|comma` | `auto` | Delimiter for hapresult/sample-haplotype input |
+| `-D, --phenotype-delimiter` | `auto\|tab\|comma` | `auto` | Delimiter for phenotype input |
+| `-G, --population-delimiter` | `auto\|tab\|comma` | `auto` | Delimiter for population input |
+
+`--plot-box` requires exactly one selected trait. If the phenotype table has multiple numeric
+traits, pass `--trait` to choose the one to draw.
 
 ## Backend
 

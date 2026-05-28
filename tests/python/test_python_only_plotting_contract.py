@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
-from haplokit.plot import plot_hap_distribution, plot_hap_table, read_hap_summary_tsv
-
 ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from haplokit.plot import plot_hap_distribution, plot_hap_table, read_hap_summary_tsv
 
 
 def test_haplokit_python_surface_does_not_reference_r_runtime() -> None:
@@ -34,8 +37,8 @@ def test_python_plotter_renders_pdf_and_svg_from_hap_summary_tsv(tmp_path: Path)
     rows = read_hap_summary_tsv(tsv)
     pdf_out = tmp_path / "plot.pdf"
     svg_out = tmp_path / "plot.svg"
-    pdf_rendered = plot_hap_table(rows, pdf_out)
-    svg_rendered = plot_hap_table(rows, svg_out)
+    pdf_rendered = plot_hap_table(rows, pdf_out, figsize=(6, 4))
+    svg_rendered = plot_hap_table(rows, svg_out, figsize=(6, 4))
     assert pdf_rendered.exists()
     assert pdf_rendered.suffix == ".pdf"
     assert svg_rendered.exists()
@@ -57,6 +60,8 @@ def test_distribution_plot_accepts_map_facecolor(tmp_path: Path) -> None:
         database="none",
         map_facecolor="#e6f2ff",
         fmt="pdf",
+        figsize=(6, 4),
+        show_labels=True,
     )
 
     assert rendered.exists()

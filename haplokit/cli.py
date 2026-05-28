@@ -74,6 +74,19 @@ def _comparison_value(value: str) -> tuple[str, str]:
     return fields[0], fields[1]
 
 
+def _figsize_value(value: str) -> tuple[float, float]:
+    fields = [part.strip() for part in value.lower().replace("x", ",").split(",") if part.strip()]
+    if len(fields) != 2:
+        raise argparse.ArgumentTypeError("figsize must look like WIDTH,HEIGHT")
+    try:
+        width, height = (float(field) for field in fields)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("figsize width and height must be numbers") from exc
+    if width <= 0 or height <= 0:
+        raise argparse.ArgumentTypeError("figsize width and height must be positive")
+    return width, height
+
+
 @dataclass(frozen=True)
 class Selector:
     payload: dict[str, object]
@@ -125,7 +138,7 @@ def build_parser() -> HaolokitArgumentParser:
     formatter = argparse.ArgumentDefaultsHelpFormatter
     parser = HaolokitArgumentParser(
         prog="haplokit",
-        description="CLI haplotype viewer with C++ backend and Python plotting.",
+        description="CLI haplotype viewer with C++ backend, phenotype statistics, and Python plotting.",
         formatter_class=formatter,
     )
     subparsers = parser.add_subparsers(dest="command")
@@ -162,9 +175,14 @@ def build_parser() -> HaolokitArgumentParser:
     view_output.add_argument("-O", "--output-file", help="output directory for TSV mode or file path for JSONL mode")
     view_plotting.add_argument("-P", "--plot", action="store_true", help="render haplotype table plot artifacts")
     view_plotting.add_argument("-F", "--plot-format", choices=["png", "pdf", "svg", "tiff"], default="png", help="plot artifact format")
+    view_plotting.add_argument("-z", "--figsize", type=_figsize_value, help="figure size as WIDTH,HEIGHT in inches for table and map plots")
     view_plotting.add_argument("-p", "--population", dest="population_file", help="tab-separated sample-to-population map")
     view_plotting.add_argument("-e", "--geo", dest="geo_file", help="sample coordinate table for geographic haplotype plots")
     view_plotting.add_argument("-C", "--map-facecolor", default="#f5f5f0", help="background color for geographic map plots")
+    map_counts = view_plotting.add_mutually_exclusive_group()
+    map_counts.add_argument("--show-counts", "--show-map-counts", dest="show_map_counts", action="store_true", help="show sample-count labels at map pie centers")
+    map_counts.add_argument("--hide-counts", "--hide-map-counts", dest="show_map_counts", action="store_false", help="hide sample-count labels at map pie centers")
+    view.set_defaults(show_map_counts=False)
     view_network.add_argument("-n", "--network", action="store_true", help="render haplotype network plot")
     view_network.add_argument("-N", "--network-method", choices=["tcs", "msn", "mjn"], default="tcs", help="haplotype network inference method")
     view_labeling.add_argument("-H", "--hap-prefix", default="Hap", help="haplotype label prefix")
@@ -177,54 +195,29 @@ def build_parser() -> HaolokitArgumentParser:
         description="Join haplokit hapresult/sample-haplotype tables with phenotype traits.",
         formatter_class=formatter,
     )
-    phenotype_subparsers = phenotype.add_subparsers(dest="phenotype_command", required=True)
-
-    stat = phenotype_subparsers.add_parser(
-        "stat",
-        help="Run haplotype-vs-phenotype hypothesis tests",
-        description="Run ANOVA and pairwise haplotype tests for one or more numeric phenotype traits.",
-        formatter_class=formatter,
-    )
-    stat_input = stat.add_argument_group("Haplotype/phenotype input options")
-    stat_test = stat.add_argument_group("Phenotype test options")
-    stat_output = stat.add_argument_group("Output options")
-    stat_parse = stat.add_argument_group("Parsing options")
-    stat_input.add_argument("-H", "--hapresult", "--haplotypes", dest="haplotypes", required=True, help="haplokit hapresult.tsv or two-column sample-haplotype table")
-    stat_input.add_argument("-P", "--phenotypes", "--phenotype", "--pheno-file", dest="phenotypes", required=True, help="phenotype table; first column is sample ID, remaining columns are traits")
-    stat_input.add_argument("-p", "--population", "--pop-group", dest="population_file", help="optional sample-to-population table; tests are stratified within each population")
-    stat_test.add_argument("-t", "--trait", action="append", dest="traits", help="phenotype trait/column to analyze; repeat to select multiple traits")
-    stat_test.add_argument("-m", "--min-hap-size", type=_positive_int_value, default=5, help="minimum numeric samples per haplotype within each test stratum")
-    stat_test.add_argument("-M", "--method", choices=["welch", "student", "mannwhitney", "tukey"], default="welch", help="pairwise test method")
-    stat_test.add_argument("-a", "--adjust", choices=["bonferroni", "none"], default="bonferroni", help="p-value adjustment for non-Tukey pairwise tests")
-    stat_output.add_argument("-o", "--output", default="phenotype_stats.tsv", help="output TSV for pairwise statistics")
-    stat_output.add_argument("-s", "--summary-output", help="optional output TSV for per-haplotype summary statistics")
-    stat_parse.add_argument("-d", "--delimiter", choices=["auto", "tab", "comma"], default="auto", dest="hap_delimiter", help="delimiter for hapresult/sample-haplotype input")
-    stat_parse.add_argument("-D", "--phenotype-delimiter", choices=["auto", "tab", "comma"], default="auto", help="delimiter for phenotype input")
-    stat_parse.add_argument("-G", "--population-delimiter", choices=["auto", "tab", "comma"], default="auto", help="delimiter for population input")
-
-    box = phenotype_subparsers.add_parser(
-        "box",
-        help="Plot a phenotype distribution by haplotype",
-        description="Draw a boxplot with jittered sample points for one numeric phenotype trait.",
-        formatter_class=formatter,
-    )
-    box_input = box.add_argument_group("Haplotype/phenotype input options")
-    box_plot = box.add_argument_group("Phenotype plot options")
-    box_compare = box.add_argument_group("Comparison annotation options")
-    box_parse = box.add_argument_group("Parsing options")
-    box_input.add_argument("-H", "--hapresult", "--haplotypes", dest="haplotypes", required=True, help="haplokit hapresult.tsv or two-column sample-haplotype table")
-    box_input.add_argument("-P", "--phenotypes", "--phenotype", "--pheno-file", dest="phenotypes", required=True, help="phenotype table; first column is sample ID, remaining columns are traits")
-    box_input.add_argument("-p", "--population", "--pop-group", dest="population_file", help="optional sample-to-population table; boxplots are grouped by population")
-    box_plot.add_argument("-t", "--trait", required=True, help="phenotype trait/column to plot")
-    box_plot.add_argument("-o", "--output", default="phenotype_box.png", help="output plot path")
-    box_plot.add_argument("-F", "--plot-format", choices=["png", "pdf", "svg", "tiff"], default=None, help="plot format; defaults to output suffix")
-    box_plot.add_argument("-T", "--title", help="plot title")
-    box_compare.add_argument("-m", "--min-hap-size", type=_positive_int_value, default=5, help="minimum numeric samples per haplotype")
-    box_compare.add_argument("-M", "--method", choices=["welch", "student", "mannwhitney", "tukey"], default="welch", help="pairwise method used for annotated comparisons")
-    box_compare.add_argument("-c", "--comparison", action="append", type=_comparison_value, default=[], help="pair to annotate, e.g. Hap01,Hap02; repeat for multiple pairs")
-    box_parse.add_argument("-d", "--delimiter", choices=["auto", "tab", "comma"], default="auto", dest="hap_delimiter", help="delimiter for hapresult/sample-haplotype input")
-    box_parse.add_argument("-D", "--phenotype-delimiter", choices=["auto", "tab", "comma"], default="auto", help="delimiter for phenotype input")
-    box_parse.add_argument("-G", "--population-delimiter", choices=["auto", "tab", "comma"], default="auto", help="delimiter for population input")
+    phenotype_input = phenotype.add_argument_group("Haplotype/phenotype input options")
+    phenotype_test = phenotype.add_argument_group("Phenotype test options")
+    phenotype_output = phenotype.add_argument_group("Output options")
+    phenotype_plot = phenotype.add_argument_group("Phenotype boxplot options")
+    phenotype_parse = phenotype.add_argument_group("Parsing options")
+    phenotype_input.add_argument("-H", "--hapresult", "--haplotypes", dest="haplotypes", required=True, help="haplokit hapresult.tsv or two-column sample-haplotype table")
+    phenotype_input.add_argument("-P", "--phenotypes", "--phenotype", "--pheno-file", dest="phenotypes", required=True, help="phenotype table; first column is sample ID, remaining columns are traits")
+    phenotype_input.add_argument("-p", "--population", "--pop-group", dest="population_file", help="optional sample-to-population table; tests and boxplots are stratified by population")
+    phenotype_test.add_argument("-t", "--trait", action="append", dest="traits", help="phenotype trait/column to analyze; repeat for multiple traits")
+    phenotype_test.add_argument("-m", "--min-hap-size", type=_positive_int_value, default=5, help="minimum numeric samples per haplotype within each test stratum")
+    phenotype_test.add_argument("-M", "--method", choices=["welch", "student", "mannwhitney", "tukey"], default="welch", help="explicit pairwise test formula/method")
+    phenotype_test.add_argument("-a", "--adjust", choices=["bonferroni", "none"], default="bonferroni", help="p-value adjustment for non-Tukey pairwise tests")
+    phenotype_output.add_argument("-o", "--output", default="phenotype_stats.tsv", help="output TSV for pairwise statistics")
+    phenotype_output.add_argument("-s", "--summary-output", help="optional output TSV for per-haplotype summary statistics")
+    phenotype_plot.add_argument("-B", "--plot-box", action="store_true", help="also render a phenotype boxplot for the selected trait")
+    phenotype_plot.add_argument("-b", "--box-output", default="phenotype_box.png", help="output path for --plot-box")
+    phenotype_plot.add_argument("-F", "--plot-format", choices=["png", "pdf", "svg", "tiff"], default=None, help="boxplot format; defaults to --box-output suffix")
+    phenotype_plot.add_argument("-z", "--figsize", type=_figsize_value, help="boxplot figure size as WIDTH,HEIGHT in inches")
+    phenotype_plot.add_argument("-T", "--title", help="boxplot title")
+    phenotype_plot.add_argument("-c", "--comparison", action="append", type=_comparison_value, default=[], help="haplotype pair to annotate in --plot-box, e.g. Hap01,Hap02; repeat for multiple pairs")
+    phenotype_parse.add_argument("-d", "--delimiter", choices=["auto", "tab", "comma"], default="auto", dest="hap_delimiter", help="delimiter for hapresult/sample-haplotype input")
+    phenotype_parse.add_argument("-D", "--phenotype-delimiter", choices=["auto", "tab", "comma"], default="auto", help="delimiter for phenotype input")
+    phenotype_parse.add_argument("-G", "--population-delimiter", choices=["auto", "tab", "comma"], default="auto", help="delimiter for population input")
 
     return parser
 
@@ -677,7 +670,15 @@ def _write_plot_artifacts(
             if args.population_file:
                 pop_data = read_popgroup(args.population_file)
             gff_path = str(args.gff3) if args.gff3 else None
-            artifact_paths["plot_file"] = str(plot_hap_table(summary_table, pdf_path, pop_data=pop_data, gff_path=gff_path, title=gene_name, fmt=args.plot_format))
+            artifact_paths["plot_file"] = str(plot_hap_table(
+                summary_table,
+                pdf_path,
+                pop_data=pop_data,
+                gff_path=gff_path,
+                title=gene_name,
+                fmt=args.plot_format,
+                figsize=args.figsize,
+            ))
 
         # Geographic distribution map
         if args.geo_file:
@@ -721,6 +722,8 @@ def _write_plot_artifacts(
                     hap_colors=hap_colors, title=gene_name,
                     map_facecolor=args.map_facecolor,
                     fmt=args.plot_format,
+                    figsize=args.figsize,
+                    show_labels=args.show_map_counts,
                 ))
 
         # Haplotype network
@@ -762,64 +765,61 @@ def _write_plot_artifacts(
 
 
 def _run_phenotype(args) -> int:
-    if args.phenotype_command == "stat":
-        from haplokit._phenotype import (
-            load_phenotype_dataset,
-            pairwise_statistics,
-            summarize_groups,
-            write_stat_tsv,
-            write_summary_tsv,
-        )
+    from haplokit._phenotype import (
+        PhenotypeError,
+        load_phenotype_dataset,
+        pairwise_statistics,
+        summarize_groups,
+        write_stat_tsv,
+        write_summary_tsv,
+    )
 
-        dataset = load_phenotype_dataset(
-            args.haplotypes,
-            args.phenotypes,
-            traits=args.traits or None,
-            hap_delimiter=args.hap_delimiter,
-            phenotype_delimiter=args.phenotype_delimiter,
-            population_file=args.population_file,
-            population_delimiter=args.population_delimiter,
-        )
-        rows = pairwise_statistics(
+    dataset = load_phenotype_dataset(
+        args.haplotypes,
+        args.phenotypes,
+        traits=args.traits or None,
+        hap_delimiter=args.hap_delimiter,
+        phenotype_delimiter=args.phenotype_delimiter,
+        population_file=args.population_file,
+        population_delimiter=args.population_delimiter,
+    )
+    if args.plot_box and len(dataset.traits) != 1:
+        raise PhenotypeError("--plot-box requires exactly one phenotype trait; use --trait to select one")
+
+    rows = pairwise_statistics(
+        dataset.records,
+        traits=dataset.traits,
+        min_hap_size=args.min_hap_size,
+        method=args.method,
+        adjust=args.adjust,
+        populations=dataset.populations or None,
+    )
+    write_stat_tsv(rows, args.output)
+    if args.summary_output:
+        summary_rows = summarize_groups(
             dataset.records,
             traits=dataset.traits,
             min_hap_size=args.min_hap_size,
-            method=args.method,
-            adjust=args.adjust,
             populations=dataset.populations or None,
         )
-        write_stat_tsv(rows, args.output)
-        if args.summary_output:
-            summary_rows = summarize_groups(
-                dataset.records,
-                traits=dataset.traits,
-                min_hap_size=args.min_hap_size,
-                populations=dataset.populations or None,
-            )
-            write_summary_tsv(summary_rows, args.summary_output)
-        return 0
+        write_summary_tsv(summary_rows, args.summary_output)
 
-    if args.phenotype_command == "box":
+    if args.plot_box:
         from haplokit.plot import plot_hap_phenotype_box
 
         plot_hap_phenotype_box(
-            args.haplotypes,
-            args.phenotypes,
-            args.trait,
-            args.output,
+            dataset.records,
+            trait=dataset.traits[0],
+            output_path=args.box_output,
             min_hap_size=args.min_hap_size,
             method=args.method,
             comparisons=args.comparison,
-            hap_delimiter=args.hap_delimiter,
-            phenotype_delimiter=args.phenotype_delimiter,
-            population_file=args.population_file,
-            population_delimiter=args.population_delimiter,
+            populations=dataset.populations or None,
             title=args.title,
             fmt=args.plot_format,
+            figsize=args.figsize,
         )
-        return 0
-
-    raise RuntimeError(f"unsupported phenotype command: {args.phenotype_command}")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:

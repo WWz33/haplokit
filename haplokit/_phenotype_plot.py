@@ -34,6 +34,7 @@ def plot_hap_phenotype_box(
     populations: Sequence[str] | None = None,
     title: str | None = None,
     fmt: str | None = None,
+    figsize: tuple[float, float] | None = None,
 ) -> Path:
     """Plot phenotype distributions by haplotype as boxplots with jittered samples."""
     if output_path is None:
@@ -80,6 +81,7 @@ def plot_hap_phenotype_box(
             method,
             comparisons,
             title,
+            figsize,
         )
     else:
         fig = _plot_haplotype_box(
@@ -90,6 +92,7 @@ def plot_hap_phenotype_box(
             method,
             comparisons,
             title,
+            figsize,
         )
 
     fig.tight_layout()
@@ -104,13 +107,14 @@ def _plot_haplotype_box(
     method: str,
     comparisons: Sequence[tuple[str, str]] | None,
     title: str | None,
+    figsize: tuple[float, float] | None,
 ):
     import matplotlib.pyplot as plt
 
     labels = list(grouped)
     data = [grouped[label] for label in labels]
     fig_width = max(5.0, 1.15 * len(labels) + 2.0)
-    fig, ax = plt.subplots(figsize=(fig_width, 4.8))
+    fig, ax = plt.subplots(figsize=figsize or (fig_width, 4.8))
     boxplot_kwargs = _boxplot_kwargs()
     try:
         box = ax.boxplot(data, tick_labels=labels, **boxplot_kwargs)
@@ -122,7 +126,7 @@ def _plot_haplotype_box(
     ax.set_xlabel("Haplotype")
     ax.set_ylabel(trait)
     ax.set_title(title or f"{trait} by haplotype")
-    ax.grid(axis="y", color="#dddddd", linewidth=0.7, alpha=0.8)
+    _style_box_axes(ax)
     ax.tick_params(axis="x", rotation=30 if max(len(label) for label in labels) > 7 else 0)
 
     if comparisons:
@@ -139,6 +143,7 @@ def _plot_population_grouped_box(
     method: str,
     comparisons: Sequence[tuple[str, str]] | None,
     title: str | None,
+    figsize: tuple[float, float] | None,
 ):
     import matplotlib.pyplot as plt
     from matplotlib.patches import Patch
@@ -157,6 +162,7 @@ def _plot_population_grouped_box(
             min_hap_size,
             method,
             title,
+            figsize,
         )
 
     population_labels = [population for population, _ in population_panels]
@@ -180,7 +186,7 @@ def _plot_population_grouped_box(
             colors.append(PALETTE[hap_index % len(PALETTE)])
 
     fig_width = max(6.0, len(population_labels) * (1.15 + 0.2 * len(retained_haps)) + 2.3)
-    fig, ax = plt.subplots(figsize=(fig_width, 4.9))
+    fig, ax = plt.subplots(figsize=figsize or (fig_width, 4.9))
     box = ax.boxplot(data, positions=positions, widths=box_width, **_boxplot_kwargs())
     _color_boxes(box, colors)
     _scatter_points(ax, data, positions, width=box_width)
@@ -191,13 +197,15 @@ def _plot_population_grouped_box(
     ax.set_xlabel("Population")
     ax.set_ylabel(trait)
     ax.set_title(title or f"{trait} by population and haplotype")
-    ax.grid(axis="y", color="#dddddd", linewidth=0.7, alpha=0.8)
+    _style_box_axes(ax)
     ax.legend(
         handles=[
             Patch(facecolor=PALETTE[index % len(PALETTE)], edgecolor="#444444", label=haplotype, alpha=0.55)
             for index, haplotype in enumerate(retained_haps)
         ],
-        title="Haplotype",
+        fontsize=5,
+        loc="upper left",
+        frameon=False,
     )
 
     annotations = _within_population_annotations(
@@ -232,6 +240,7 @@ def _plot_single_haplotype_by_population(
     min_hap_size: int,
     method: str,
     title: str | None,
+    figsize: tuple[float, float] | None,
 ):
     import matplotlib.pyplot as plt
 
@@ -241,7 +250,7 @@ def _plot_single_haplotype_by_population(
     position_map = {(population, haplotype): position for population, position in zip(population_labels, positions)}
 
     fig_width = max(5.0, 1.05 * len(population_labels) + 2.0)
-    fig, ax = plt.subplots(figsize=(fig_width, 4.8))
+    fig, ax = plt.subplots(figsize=figsize or (fig_width, 4.8))
     box = ax.boxplot(data, positions=positions, widths=0.58, **_boxplot_kwargs())
     _color_boxes(box, [PALETTE[0] for _ in data])
     _scatter_points(ax, data, positions, width=0.58)
@@ -251,7 +260,7 @@ def _plot_single_haplotype_by_population(
     ax.set_xlabel("Population")
     ax.set_ylabel(trait)
     ax.set_title(title or f"{trait} by population ({haplotype})")
-    ax.grid(axis="y", color="#dddddd", linewidth=0.7, alpha=0.8)
+    _style_box_axes(ax)
 
     annotations = _between_population_annotations(
         records,
@@ -275,6 +284,15 @@ def _boxplot_kwargs() -> dict[str, object]:
         "capprops": {"color": "#555555", "linewidth": 1.0},
         "boxprops": {"edgecolor": "#444444", "linewidth": 1.0},
     }
+
+
+def _style_box_axes(ax) -> None:
+    ax.grid(False)
+    for spine in ax.spines.values():
+        spine.set_visible(True)
+        spine.set_color("#333333")
+        spine.set_linewidth(1.0)
+    ax.tick_params(colors="#222222", width=0.9, length=4)
 
 
 def _color_boxes(box, colors: Sequence[str]) -> None:

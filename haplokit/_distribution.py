@@ -6,10 +6,12 @@ from pathlib import Path
 from urllib.request import urlopen
 
 import matplotlib.pyplot as plt
-from matplotlib.patches import Polygon, Wedge, Patch
+from matplotlib.offsetbox import AnchoredOffsetbox, DrawingArea, HPacker, TextArea, VPacker
+from matplotlib.patches import Circle, Polygon, Rectangle, Wedge
 from matplotlib.collections import PatchCollection
+from matplotlib.text import Text
 
-from ._palette import PALETTE, allele_palette, make_legend_handles, save_figure
+from ._palette import allele_palette, save_figure
 
 # GeoJSON sources keyed by database name
 _GEO_SOURCES: dict[str, str] = {
@@ -58,6 +60,7 @@ def plot_hap_distribution(
     legend_font_size: float = 7,
     dpi: int = 600,
     fmt: str | None = None,
+    figsize: tuple[float, float] | None = None,
 ) -> Path:
     """Haplotype geographic distribution with map + pie charts.
 
@@ -79,11 +82,11 @@ def plot_hap_distribution(
         label_font_size: Font size for location labels.
         legend_font_size: Font size for legend.
         dpi: Output resolution.
+        figsize: Optional figure size as (width, height) in inches.
     """
     if not samples:
         raise ValueError("no samples provided")
 
-    n_haps = len(hap_names)
     if hap_colors is None:
         color_map = allele_palette(hap_names)
     else:
@@ -112,7 +115,7 @@ def plot_hap_distribution(
     fig_w = max(6, lon_span * 0.08 + 2)
     fig_h = max(5, lat_span * 0.08 + 2)
 
-    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+    fig, ax = plt.subplots(figsize=figsize or (fig_w, fig_h))
     ax.set_aspect("equal")
 
     # ── Draw map from GeoJSON ──
@@ -195,67 +198,60 @@ def plot_hap_distribution(
                 color="#272727", zorder=6,
             )
 
-    # ── Top legends: haplotype colors (left) + bubble size (right) ──
-    handles = make_legend_handles(color_map)
-    n_color_cols = min(len(handles), 6)
-    color_legend = ax.legend(
-        handles=handles,
-        fontsize=legend_font_size,
-        loc="lower left",
-        bbox_to_anchor=(0.0, 1.02, 0.6, 0.15),
-        ncol=n_color_cols,
-        frameon=False,
-        mode="expand",
-        handletextpad=0.5,
-        columnspacing=1.2,
-        borderaxespad=0.0,
-    )
-    ax.add_artist(color_legend)
-
-    # Bubble-size legend (ggplot2 style) — top-right, marker-size based
-    if totals:
-        from matplotlib.lines import Line2D
-        sorted_totals = sorted(set(totals))
-        if len(sorted_totals) == 1:
-            bubble_vals = [sorted_totals[0]]
-        elif len(sorted_totals) == 2:
-            bubble_vals = sorted_totals
-        else:
-            lo, hi = min(totals), max(totals)
-            mid = int(round((lo + hi) / 2))
-            bubble_vals = [lo, mid, hi]
-
-        marker_factor = 11.0
-        size_handles = []
-        for val in bubble_vals:
-            s = math.sqrt(val)
-            if dif > 0:
-                norm = (s - min_sq) / dif
-                r = norm * (symbol_lim[1] - symbol_lim[0]) + symbol_lim[0]
-            else:
-                r = (symbol_lim[0] + symbol_lim[1]) / 2
-            size_handles.append(
-                Line2D(
-                    [0], [0], marker="o", linestyle="none",
-                    markerfacecolor="#cccccc", markeredgecolor="#666666",
-                    markeredgewidth=0.5,
-                    markersize=r * marker_factor, label=str(val),
-                )
-            )
-        ax.legend(
-            handles=size_handles,
-            fontsize=legend_font_size,
-            loc="lower right",
-            bbox_to_anchor=(0.6, 1.02, 0.4, 0.15),
-            ncol=len(size_handles),
-            frameon=False,
-            title="Sample count",
-            title_fontsize=legend_font_size,
-            handletextpad=0.4,
-            columnspacing=1.5,
-            borderaxespad=0.0,
-        )
+    _add_lower_left_legend(ax, color_map, totals, legend_font_size)
 
     fig.tight_layout(pad=1.2)
-    fig.subplots_adjust(top=0.86)
     return save_figure(fig, output_path, dpi=dpi, fmt=fmt)
+
+
+def _add_lower_left_legend(
+    ax,
+    color_map: dict[str, str],
+    totals: list[int],
+    legend_font_size: float,
+) -> None:
+    rows = [_legend_color_row(name, color, legend_font_size) for name, color in color_map.items()]
+    size_area = _legend_size_area(totals, legend_font_size)
+    if size_area is not None:
+        rows.append(size_area)
+    if not rows:
+        return
+
+    legend_box = VPacker(children=rows, align="left", pad=0, sep=1.5)
+    anchored = AnchoredOffsetbox(
+        loc="lower left",
+        child=legend_box,
+        frameon=False,
+        pad=0.0,
+        borderpad=0.8,
+    )
+    ax.add_artist(anchored)
+
+
+def _legend_color_row(name: str, color: str, legend_font_size: float):
+    swatch = DrawingArea(12, 9, 0, 0)
+    swatch.add_artist(Rectangle((1.5, 1.0), 8.0, 7.0, facecolor=color, edgecolor="#999999", linewidth=0.6))
+    label = TextArea(str(name), textprops={"fontsize": legend_font_size, "color": "#222222"})
+    return HPacker(children=[swatch, label], align="center", pad=0, sep=2.5)
+
+
+def _legend_size_area(totals: list[int], legend_font_size: float):
+    unique_totals = sorted({int(total) for total in totals if total > 0})
+    if not unique_totals:
+        return None
+
+    hi = unique_totals[-1]
+    lo = unique_totals[0]
+    area = DrawingArea(44, 34, 0, 0)
+    cx = 14.0
+    r_hi = 12.5
+    cy_hi = 17.0
+    area.add_artist(Circle((cx, cy_hi), r_hi, facecolor="none", edgecolor="#222222", linewidth=0.8))
+    area.add_artist(Text(cx, cy_hi, str(hi), fontsize=max(legend_font_size - 1.0, 4.5), ha="center", va="center", color="#333333"))
+
+    if hi != lo:
+        r_lo = max(4.8, r_hi * math.sqrt(lo / hi))
+        cy_lo = cy_hi - (r_hi - r_lo)
+        area.add_artist(Circle((cx, cy_lo), r_lo, facecolor="none", edgecolor="#222222", linewidth=0.8))
+        area.add_artist(Text(cx, cy_lo, str(lo), fontsize=max(legend_font_size - 1.4, 4.2), ha="center", va="center", color="#333333"))
+    return area

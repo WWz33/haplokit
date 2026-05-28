@@ -71,6 +71,7 @@ def test_view_defaults_to_tsv_and_infers_region_mode_for_interval() -> None:
     assert args.output_mode == "summary"
     assert args.output_format == "tsv"
     assert args.by == "region"
+    assert args.show_map_counts is False
 
 
 def test_view_infers_site_mode_from_single_position_region() -> None:
@@ -125,12 +126,15 @@ def test_view_accepts_short_option_aliases() -> None:
             "-P",
             "-F",
             "pdf",
+            "-z",
+            "7,4",
             "-p",
             "pop.tsv",
             "-m",
             "0.2",
             "-e",
             "geo.tsv",
+            "--show-counts",
             "--map-facecolor",
             "#e6f2ff",
             "-n",
@@ -156,9 +160,11 @@ def test_view_accepts_short_option_aliases() -> None:
     assert args.output_file == "out.jsonl"
     assert args.plot is True
     assert args.plot_format == "pdf"
+    assert args.figsize == (7.0, 4.0)
     assert args.population_file == "pop.tsv"
     assert args.max_diff == 0.2
     assert args.geo_file == "geo.tsv"
+    assert args.show_map_counts is True
     assert args.map_facecolor == "#e6f2ff"
     assert args.network is True
     assert args.network_method == "msn"
@@ -177,7 +183,17 @@ def test_view_help_describes_parameters(capsys: pytest.CaptureFixture[str]) -> N
     assert "Haplotype network options" in out
     assert "indexed VCF/BCF input path" in out
     assert "-C, --map-facecolor" in out
+    assert "-z, --figsize FIGSIZE" in out
+    assert "--show-counts" in out
+    assert "--hide-counts" in out
     assert "haplotype network inference method" in out
+
+
+def test_view_rejects_invalid_figsize_values() -> None:
+    parser = build_parser()
+    for value in ["7", "7,0", "0,4", "-1,4", "wide,4"]:
+        with pytest.raises(SystemExit):
+            parser.parse_args(["view", "-r", "chr1:1-10", "--figsize", value])
 
 
 def test_view_gene_id_selector_requires_gff_and_infers_region_mode() -> None:

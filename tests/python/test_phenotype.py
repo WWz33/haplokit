@@ -253,7 +253,6 @@ def test_phenotype_cli_reports_effective_n_for_missing_values(tmp_path: Path) ->
     exit_code = main(
         [
             "phenotype",
-            "stat",
             "--hapresult",
             str(hapresult),
             "--phenotypes",
@@ -364,7 +363,7 @@ def test_population_pairwise_statistics_compares_populations_within_haplotype() 
     assert rows[0]["effective_n"] == 4
 
 
-def test_phenotype_cli_stat_and_box_write_outputs(tmp_path: Path) -> None:
+def test_phenotype_cli_stats_and_plot_box_write_outputs(tmp_path: Path) -> None:
     hapresult = tmp_path / "hapresult.tsv"
     phenotype = tmp_path / "phenotype.csv"
     stats_out = tmp_path / "stats.tsv"
@@ -377,7 +376,6 @@ def test_phenotype_cli_stat_and_box_write_outputs(tmp_path: Path) -> None:
     args = parser.parse_args(
         [
             "phenotype",
-            "stat",
             "--hapresult",
             str(hapresult),
             "--phenotypes",
@@ -391,13 +389,12 @@ def test_phenotype_cli_stat_and_box_write_outputs(tmp_path: Path) -> None:
         ]
     )
     assert args.command == "phenotype"
-    assert args.phenotype_command == "stat"
+    assert args.plot_box is False
     assert args.phenotypes == str(phenotype)
 
     alias_args = parser.parse_args(
         [
             "phenotype",
-            "stat",
             "--hapresult",
             str(hapresult),
             "--phenotype",
@@ -409,7 +406,6 @@ def test_phenotype_cli_stat_and_box_write_outputs(tmp_path: Path) -> None:
     exit_code = main(
         [
             "pheno",
-            "stat",
             "--hapresult",
             str(hapresult),
             "--phenotypes",
@@ -432,7 +428,6 @@ def test_phenotype_cli_stat_and_box_write_outputs(tmp_path: Path) -> None:
     box_exit = main(
         [
             "phenotype",
-            "box",
             "--hapresult",
             str(hapresult),
             "--phenotypes",
@@ -442,6 +437,9 @@ def test_phenotype_cli_stat_and_box_write_outputs(tmp_path: Path) -> None:
             "--min-hap-size",
             "3",
             "--output",
+            str(stats_out),
+            "--plot-box",
+            "--box-output",
             str(box_out),
             "--plot-format",
             "pdf",
@@ -460,7 +458,6 @@ def test_phenotype_cli_rejects_invalid_comparison() -> None:
         parser.parse_args(
             [
                 "phenotype",
-                "box",
                 "--hapresult",
                 "hapresult.tsv",
                 "--phenotypes",
@@ -478,7 +475,6 @@ def test_phenotype_cli_accepts_short_options(capsys: pytest.CaptureFixture[str])
     stat_args = parser.parse_args(
         [
             "pheno",
-            "stat",
             "-H",
             "hapresult.tsv",
             "-P",
@@ -506,7 +502,7 @@ def test_phenotype_cli_accepts_short_options(capsys: pytest.CaptureFixture[str])
         ]
     )
     assert stat_args.command == "pheno"
-    assert stat_args.phenotype_command == "stat"
+    assert stat_args.plot_box is False
     assert stat_args.haplotypes == "hapresult.tsv"
     assert stat_args.phenotypes == "phenotype.csv"
     assert stat_args.summary_output == "summary.tsv"
@@ -521,7 +517,6 @@ def test_phenotype_cli_accepts_short_options(capsys: pytest.CaptureFixture[str])
     box_args = parser.parse_args(
         [
             "phenotype",
-            "box",
             "-H",
             "hapresult.tsv",
             "-P",
@@ -530,10 +525,15 @@ def test_phenotype_cli_accepts_short_options(capsys: pytest.CaptureFixture[str])
             "yield",
             "-p",
             "popgroup.tsv",
+            "-B",
             "-o",
+            "stats.tsv",
+            "-b",
             "box.svg",
             "-F",
             "svg",
+            "-z",
+            "6x4",
             "-m",
             "3",
             "-M",
@@ -550,14 +550,31 @@ def test_phenotype_cli_accepts_short_options(capsys: pytest.CaptureFixture[str])
             "Yield by haplotype",
         ]
     )
-    assert box_args.phenotype_command == "box"
+    assert box_args.plot_box is True
+    assert box_args.box_output == "box.svg"
     assert box_args.population_file == "popgroup.tsv"
     assert box_args.population_delimiter == "tab"
+    assert box_args.figsize == (6.0, 4.0)
     assert box_args.comparison == [("Hap01", "Hap02")]
     assert box_args.title == "Yield by haplotype"
 
     with pytest.raises(SystemExit):
-        parser.parse_args(["phenotype", "stat", "--help"])
+        parser.parse_args(
+            [
+                "phenotype",
+                "-H",
+                "hapresult.tsv",
+                "-P",
+                "phenotype.csv",
+                "-t",
+                "yield",
+                "--figsize",
+                "6,0",
+            ]
+        )
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["phenotype", "--help"])
     out = capsys.readouterr().out
     assert "Haplotype/phenotype input options" in out
     assert "Phenotype test options" in out
@@ -579,6 +596,7 @@ def test_plot_hap_phenotype_box_is_exported(tmp_path: Path) -> None:
         tmp_path / "yield.svg",
         min_hap_size=3,
         fmt="svg",
+        figsize=(6, 4),
     )
 
     assert rendered.exists()
@@ -704,17 +722,17 @@ def test_single_haplotype_population_box_emits_only_between_annotations(
     assert round(abs(captured[0][1] - captured[0][0]), 2) == 1.0
 
 
-def test_phenotype_cli_box_accepts_population_group(tmp_path: Path) -> None:
+def test_phenotype_cli_plot_box_accepts_population_group(tmp_path: Path) -> None:
     hapresult = tmp_path / "haplotypes.tsv"
     phenotype = tmp_path / "phenotype.csv"
     population = tmp_path / "popgroup.tsv"
+    stats_out = tmp_path / "box_stats.tsv"
     box_out = tmp_path / "yield_by_population.svg"
     _write_balanced_population_box_inputs(hapresult, phenotype, population)
 
     exit_code = main(
         [
             "phenotype",
-            "box",
             "--hapresult",
             str(hapresult),
             "--phenotypes",
@@ -726,6 +744,9 @@ def test_phenotype_cli_box_accepts_population_group(tmp_path: Path) -> None:
             "--min-hap-size",
             "2",
             "--output",
+            str(stats_out),
+            "--plot-box",
+            "--box-output",
             str(box_out),
             "--plot-format",
             "svg",
@@ -733,6 +754,7 @@ def test_phenotype_cli_box_accepts_population_group(tmp_path: Path) -> None:
     )
 
     assert exit_code == 0
+    assert stats_out.exists()
     assert box_out.exists()
     rendered_text = box_out.read_text(encoding="utf-8")
     assert "PopA" in rendered_text
@@ -740,7 +762,7 @@ def test_phenotype_cli_box_accepts_population_group(tmp_path: Path) -> None:
     assert "*" in rendered_text
 
 
-def test_phenotype_cli_stat_accepts_population_group(tmp_path: Path) -> None:
+def test_phenotype_cli_stats_accept_population_group(tmp_path: Path) -> None:
     hapresult = tmp_path / "hapresult.tsv"
     phenotype = tmp_path / "phenotype.csv"
     population = tmp_path / "popgroup.tsv"
@@ -752,7 +774,6 @@ def test_phenotype_cli_stat_accepts_population_group(tmp_path: Path) -> None:
     exit_code = main(
         [
             "phenotype",
-            "stat",
             "--hapresult",
             str(hapresult),
             "--phenotypes",
