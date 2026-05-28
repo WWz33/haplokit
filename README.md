@@ -14,7 +14,42 @@ CLI haplotype viewer with bcftools-like selectors, C++ backend, and Python plott
 pip install haplokit
 ```
 
-> Source build requires Linux/WSL, Python 3.10+, C++17 toolchain, CMake 3.22+ — see [Contributing](#contributing).
+> Source build requires Linux/WSL, Python 3.10+, C++17 toolchain, CMake 3.22+, make, and native link dependencies for vendored htslib. See [Contributing](#contributing).
+
+Native dependency examples:
+
+Conda/mamba:
+
+```bash
+mamba install -c conda-forge compilers make cmake libcurl zlib bzip2 xz
+python -m pip install --no-cache-dir haplokit
+```
+
+If you use the system compiler inside a conda environment, expose conda's native
+headers and libraries before building:
+
+```bash
+export CPATH="$CONDA_PREFIX/include:$CPATH"
+export LIBRARY_PATH="$CONDA_PREFIX/lib:$LIBRARY_PATH"
+export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:$LD_LIBRARY_PATH"
+export CMAKE_PREFIX_PATH="$CONDA_PREFIX:$CMAKE_PREFIX_PATH"
+python -m pip install --no-cache-dir haplokit
+```
+
+Ubuntu/Debian:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y build-essential make cmake zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
+python -m pip install --no-cache-dir haplokit
+```
+
+Common linker errors map directly to the missing native package:
+
+- `cannot find -lcurl`: install `libcurl`
+- `cannot find -lbz2`: install `bzip2` / `libbz2-dev`
+- `cannot find -llzma`: install `xz` / `liblzma-dev`
+- `cannot find -lz`: install `zlib` / `zlib1g-dev`
 
 From a git clone:
 

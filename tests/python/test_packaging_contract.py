@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -12,7 +13,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import haplokit
-from haplokit._backend import CppBackendBuildError, compatible_build_dir, find_haplokit_cpp
+from haplokit._backend import CppBackendBuildError, _native_build_environment, compatible_build_dir, find_haplokit_cpp
 
 
 def test_pyproject_declares_haplokit_console_entrypoint_and_linux_scope() -> None:
@@ -104,6 +105,27 @@ def test_find_haplokit_cpp_reports_cmake_failure(monkeypatch: pytest.MonkeyPatch
 
     with pytest.raises(CppBackendBuildError, match="missing zlib"):
         find_haplokit_cpp(repo_root, package_dir)
+
+
+def test_native_build_environment_exposes_conda_native_paths(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    conda_prefix = tmp_path / "conda-env"
+    (conda_prefix / "include").mkdir(parents=True)
+    (conda_prefix / "lib" / "pkgconfig").mkdir(parents=True)
+    (conda_prefix / "share" / "pkgconfig").mkdir(parents=True)
+    monkeypatch.setenv("CONDA_PREFIX", str(conda_prefix))
+    monkeypatch.setenv("LIBRARY_PATH", "/existing/lib")
+
+    env = _native_build_environment()
+
+    assert env["CPATH"].split(os.pathsep)[0] == str(conda_prefix / "include")
+    assert env["LIBRARY_PATH"].split(os.pathsep)[:2] == [str(conda_prefix / "lib"), "/existing/lib"]
+    assert env["CMAKE_PREFIX_PATH"].split(os.pathsep)[0] == str(conda_prefix)
+    assert env["PKG_CONFIG_PATH"].split(os.pathsep)[:2] == [
+        str(conda_prefix / "lib" / "pkgconfig"),
+        str(conda_prefix / "share" / "pkgconfig"),
+    ]
 
 
 def test_incompatible_cmake_cache_uses_python_build_dir(tmp_path: Path) -> None:

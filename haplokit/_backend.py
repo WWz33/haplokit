@@ -103,11 +103,41 @@ def _cmake_base_command() -> list[str]:
     return ["cmake"]
 
 
+def _prepend_env_paths(env: dict[str, str], name: str, paths: list[Path]) -> None:
+    values = [str(path) for path in paths if path.exists()]
+    if not values:
+        return
+
+    existing = env.get(name)
+    if existing:
+        values.append(existing)
+    env[name] = os.pathsep.join(values)
+
+
+def _native_build_environment() -> dict[str, str]:
+    env = os.environ.copy()
+    conda_prefix = env.get("CONDA_PREFIX")
+    if not conda_prefix:
+        return env
+
+    prefix = Path(conda_prefix)
+    _prepend_env_paths(env, "CPATH", [prefix / "include"])
+    _prepend_env_paths(env, "LIBRARY_PATH", [prefix / "lib"])
+    _prepend_env_paths(env, "CMAKE_PREFIX_PATH", [prefix])
+    _prepend_env_paths(env, "PKG_CONFIG_PATH", [prefix / "lib" / "pkgconfig", prefix / "share" / "pkgconfig"])
+    if os.name == "nt":
+        _prepend_env_paths(env, "PATH", [prefix / "Library" / "bin", prefix / "bin"])
+    else:
+        _prepend_env_paths(env, "LD_LIBRARY_PATH", [prefix / "lib"])
+    return env
+
+
 def _run_checked(cmd: list[str], repo_root: Path) -> None:
     try:
         completed = subprocess.run(
             cmd,
             cwd=repo_root,
+            env=_native_build_environment(),
             capture_output=True,
             text=True,
             check=False,
