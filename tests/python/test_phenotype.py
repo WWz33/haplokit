@@ -274,6 +274,91 @@ def test_phenotype_cli_rejects_invalid_comparison() -> None:
         )
 
 
+def test_phenotype_cli_accepts_short_options(capsys: pytest.CaptureFixture[str]) -> None:
+    parser = build_parser()
+    stat_args = parser.parse_args(
+        [
+            "pheno",
+            "stat",
+            "-H",
+            "hapresult.tsv",
+            "-P",
+            "phenotype.csv",
+            "-t",
+            "yield",
+            "-o",
+            "stats.tsv",
+            "-s",
+            "summary.tsv",
+            "-m",
+            "3",
+            "-M",
+            "student",
+            "-a",
+            "none",
+            "-p",
+            "popgroup.tsv",
+            "-d",
+            "tab",
+            "-D",
+            "comma",
+            "-G",
+            "tab",
+        ]
+    )
+    assert stat_args.command == "pheno"
+    assert stat_args.phenotype_command == "stat"
+    assert stat_args.haplotypes == "hapresult.tsv"
+    assert stat_args.phenotypes == "phenotype.csv"
+    assert stat_args.summary_output == "summary.tsv"
+    assert stat_args.min_hap_size == 3
+    assert stat_args.method == "student"
+    assert stat_args.adjust == "none"
+    assert stat_args.population_file == "popgroup.tsv"
+    assert stat_args.hap_delimiter == "tab"
+    assert stat_args.phenotype_delimiter == "comma"
+    assert stat_args.population_delimiter == "tab"
+
+    box_args = parser.parse_args(
+        [
+            "phenotype",
+            "box",
+            "-H",
+            "hapresult.tsv",
+            "-P",
+            "phenotype.csv",
+            "-t",
+            "yield",
+            "-o",
+            "box.svg",
+            "-F",
+            "svg",
+            "-m",
+            "3",
+            "-M",
+            "mannwhitney",
+            "-c",
+            "Hap01,Hap02",
+            "-d",
+            "tab",
+            "-D",
+            "comma",
+            "-T",
+            "Yield by haplotype",
+        ]
+    )
+    assert box_args.phenotype_command == "box"
+    assert box_args.comparison == [("Hap01", "Hap02")]
+    assert box_args.title == "Yield by haplotype"
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["phenotype", "stat", "--help"])
+    out = capsys.readouterr().out
+    assert "phenotype table; first column is sample ID" in out
+    assert "-m MIN_HAP_SIZE" in out
+    assert "--min-hap-size MIN_HAP_SIZE" in out
+
+
 def test_plot_hap_phenotype_box_is_exported(tmp_path: Path) -> None:
     hapresult = tmp_path / "hapresult.tsv"
     phenotype = tmp_path / "phenotype.csv"

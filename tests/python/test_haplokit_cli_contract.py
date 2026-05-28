@@ -166,6 +166,17 @@ def test_view_accepts_short_option_aliases() -> None:
     assert args.hap_pad == 3
 
 
+def test_view_help_describes_parameters(capsys: pytest.CaptureFixture[str]) -> None:
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["view", "--help"])
+
+    out = capsys.readouterr().out
+    assert "indexed VCF/BCF input path" in out
+    assert "-C, --map-facecolor" in out
+    assert "haplotype network inference method" in out
+
+
 def test_view_gene_id_selector_requires_gff_and_infers_region_mode() -> None:
     parser = build_parser()
     with pytest.raises(SystemExit):
