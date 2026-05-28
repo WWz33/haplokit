@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 import os
 
-from haplokit._backend import PYTHON_BUILD_DIR
+from haplokit._backend import PYTHON_BUILD_DIR, native_runtime_environment
 
 
 def find_network_backend() -> Optional[Path]:
@@ -77,11 +77,13 @@ def compute_network(
         try:
             # Check if backend is Linux ELF (needs WSL on Windows)
             import platform
+            env = native_runtime_environment()
             if platform.system() == "Windows":
                 # Use WSL to run Linux binary
                 result = subprocess.run(
                     ["wsl", str(backend).replace("\\", "/").replace("F:", "/mnt/f"), algorithm],
                     input=input_json,
+                    env=env,
                     capture_output=True,
                     text=True,
                     check=True
@@ -90,6 +92,7 @@ def compute_network(
                 result = subprocess.run(
                     [str(backend), algorithm],
                     input=input_json,
+                    env=env,
                     capture_output=True,
                     text=True,
                     check=True

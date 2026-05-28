@@ -13,7 +13,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import haplokit
-from haplokit._backend import CppBackendBuildError, _native_build_environment, compatible_build_dir, find_haplokit_cpp
+import haplokit.cli as cli_module
+from haplokit._backend import (
+    CppBackendBuildError,
+    _native_build_environment,
+    compatible_build_dir,
+    find_haplokit_cpp,
+    native_runtime_environment,
+)
 
 
 def test_pyproject_declares_haplokit_console_entrypoint_and_linux_scope() -> None:
@@ -64,6 +71,7 @@ def test_network_backend_checks_python_build_dir() -> None:
     network_py = (ROOT / "haplokit" / "network.py").read_text(encoding="utf-8")
     assert "build-python-package" in network_py
     assert "PYTHON_BUILD_DIR" in network_py
+    assert "native_runtime_environment" in network_py
 
 
 def test_find_haplokit_cpp_auto_builds_source_tree(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -126,6 +134,52 @@ def test_native_build_environment_exposes_conda_native_paths(
         str(conda_prefix / "lib" / "pkgconfig"),
         str(conda_prefix / "share" / "pkgconfig"),
     ]
+
+
+def test_native_runtime_environment_exposes_conda_library_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    conda_prefix = tmp_path / "conda-env"
+    (conda_prefix / "lib").mkdir(parents=True)
+    (conda_prefix / "bin").mkdir()
+    (conda_prefix / "Library" / "bin").mkdir(parents=True)
+    monkeypatch.setenv("CONDA_PREFIX", str(conda_prefix))
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/existing/runtime")
+
+    env = native_runtime_environment()
+
+    if os.name == "nt":
+        assert str(conda_prefix / "bin") in env["PATH"].split(os.pathsep)
+    else:
+        assert env["LD_LIBRARY_PATH"].split(os.pathsep)[:2] == [
+            str(conda_prefix / "lib"),
+            "/existing/runtime",
+        ]
+
+
+def test_cli_backend_subprocess_uses_native_runtime_environment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    captured: dict[str, dict[str, str]] = {}
+
+    def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured["env"] = kwargs["env"]  # type: ignore[assignment]
+        return subprocess.CompletedProcess(cmd, 0, "scaffold_1:1-2", "")
+
+    conda_prefix = tmp_path / "conda-env"
+    (conda_prefix / "lib").mkdir(parents=True)
+    (conda_prefix / "bin").mkdir()
+    (conda_prefix / "Library" / "bin").mkdir(parents=True)
+    monkeypatch.setenv("CONDA_PREFIX", str(conda_prefix))
+    monkeypatch.setattr(cli_module, "_cpp_backend_path", lambda: Path("/tmp/haplokit_cpp"))
+    monkeypatch.setattr(cli_module.subprocess, "run", fake_run)
+
+    assert cli_module._resolve_gene_region("anno.gff", "gene1") == "scaffold_1:1-2"
+    env = captured["env"]
+    if os.name == "nt":
+        assert str(conda_prefix / "bin") in env["PATH"].split(os.pathsep)
+    else:
+        assert env["LD_LIBRARY_PATH"].split(os.pathsep)[0] == str(conda_prefix / "lib")
 
 
 def test_incompatible_cmake_cache_uses_python_build_dir(tmp_path: Path) -> None:

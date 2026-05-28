@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-from haplokit._backend import CppBackendBuildError, find_haplokit_cpp
+from haplokit._backend import CppBackendBuildError, find_haplokit_cpp, native_runtime_environment
 from haplokit.summary_contract import (
     build_hap_label_map,
     hap_samples,
@@ -245,7 +245,13 @@ def _resolve_gene_region(
         cmd.extend(["--downstream", str(downstream)])
     if strand_aware:
         cmd.append("--strand-aware")
-    completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    completed = subprocess.run(
+        cmd,
+        env=native_runtime_environment(),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     _check_backend_result(completed)
     region = completed.stdout.strip()
     _region_value(region)
@@ -290,7 +296,13 @@ def _run_cpp_view_mode(selector: Selector, args, output_mode: str) -> dict[str, 
     ]
     _append_common_args(cmd, args)
 
-    completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    completed = subprocess.run(
+        cmd,
+        env=native_runtime_environment(),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     _check_backend_result(completed)
     payload = completed.stdout.strip()
     if not payload:
@@ -309,7 +321,13 @@ def _run_cpp_view_batch(args, output_mode: str) -> list[dict[str, object]]:
     ]
     _append_common_args(cmd, args)
 
-    completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    completed = subprocess.run(
+        cmd,
+        env=native_runtime_environment(),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     _check_backend_result(completed)
     lines = [line for line in completed.stdout.splitlines() if line.strip()]
     return [json.loads(line) for line in lines]

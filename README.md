@@ -51,6 +51,14 @@ Common linker errors map directly to the missing native package:
 - `cannot find -llzma`: install `xz` / `liblzma-dev`
 - `cannot find -lz`: install `zlib` / `zlib1g-dev`
 
+If an installed backend fails at runtime with a message like
+`libbz2.so.1.0: cannot open shared object file`, upgrade to `haplokit>=0.1.5`.
+For older installs, this environment export fixes the runtime loader path:
+
+```bash
+export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:$LD_LIBRARY_PATH"
+```
+
 From a git clone:
 
 ```bash

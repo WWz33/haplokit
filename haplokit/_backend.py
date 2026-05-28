@@ -125,10 +125,22 @@ def _native_build_environment() -> dict[str, str]:
     _prepend_env_paths(env, "LIBRARY_PATH", [prefix / "lib"])
     _prepend_env_paths(env, "CMAKE_PREFIX_PATH", [prefix])
     _prepend_env_paths(env, "PKG_CONFIG_PATH", [prefix / "lib" / "pkgconfig", prefix / "share" / "pkgconfig"])
+    _add_native_runtime_paths(env, prefix)
+    return env
+
+
+def _add_native_runtime_paths(env: dict[str, str], prefix: Path) -> None:
     if os.name == "nt":
         _prepend_env_paths(env, "PATH", [prefix / "Library" / "bin", prefix / "bin"])
     else:
         _prepend_env_paths(env, "LD_LIBRARY_PATH", [prefix / "lib"])
+
+
+def native_runtime_environment() -> dict[str, str]:
+    env = os.environ.copy()
+    conda_prefix = env.get("CONDA_PREFIX")
+    if conda_prefix:
+        _add_native_runtime_paths(env, Path(conda_prefix))
     return env
 
 
