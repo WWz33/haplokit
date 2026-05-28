@@ -354,6 +354,8 @@ def test_phenotype_cli_accepts_short_options(capsys: pytest.CaptureFixture[str])
     with pytest.raises(SystemExit):
         parser.parse_args(["phenotype", "stat", "--help"])
     out = capsys.readouterr().out
+    assert "Haplotype/phenotype input options" in out
+    assert "Phenotype test options" in out
     assert "phenotype table; first column is sample ID" in out
     assert "-m MIN_HAP_SIZE" in out
     assert "--min-hap-size MIN_HAP_SIZE" in out

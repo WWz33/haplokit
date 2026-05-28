@@ -172,6 +172,9 @@ def test_view_help_describes_parameters(capsys: pytest.CaptureFixture[str]) -> N
         parser.parse_args(["view", "--help"])
 
     out = capsys.readouterr().out
+    assert "Haplotype target options" in out
+    assert "Haplotype visualization options" in out
+    assert "Haplotype network options" in out
     assert "indexed VCF/BCF input path" in out
     assert "-C, --map-facecolor" in out
     assert "haplotype network inference method" in out

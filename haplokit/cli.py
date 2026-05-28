@@ -122,9 +122,11 @@ class HaolokitArgumentParser(argparse.ArgumentParser):
 
 
 def build_parser() -> HaolokitArgumentParser:
+    formatter = argparse.ArgumentDefaultsHelpFormatter
     parser = HaolokitArgumentParser(
         prog="haplokit",
         description="CLI haplotype viewer with C++ backend and Python plotting.",
+        formatter_class=formatter,
     )
     subparsers = parser.add_subparsers(dest="command")
 
@@ -132,38 +134,48 @@ def build_parser() -> HaolokitArgumentParser:
         "view",
         help="Call haplotypes from an indexed VCF/BCF region",
         description="Call haplotypes from indexed VCF/BCF input and write hapresult/hap_summary outputs.",
+        formatter_class=formatter,
     )
-    view.add_argument("input_vcf", nargs="?", default=None, help="indexed VCF/BCF input path")
-    view.add_argument("-r", "--region", dest="region", type=_region_value, help="single selector: chr:start-end or chr:pos")
-    view.add_argument("-R", "--regions-file", dest="regions_file", help="BED file with one or more regions")
-    view.add_argument("-G", "--gene-id", dest="gene_id", help="gene ID to resolve through --gff/--gff3")
-    view.add_argument("-l", "--gene-list", dest="gene_list", help="file containing one gene ID per line")
-    view.add_argument("-S", "--samples-file", dest="samples_file", help="optional sample ID list to include")
-    view.add_argument("-b", "--by", choices=["auto", "region", "site"], default="auto", help="haplotype grouping mode")
-    view.add_argument("-i", "--impute", action="store_true", help="treat missing genotypes as reference")
-    view.add_argument("-g", "--gff3", "--gff", help="GFF3/GTF annotation file for gene selectors and plots")
-    view.add_argument("-u", "--upstream", type=_nonnegative_int_value, default=0, help="upstream bases added to gene selectors")
-    view.add_argument("-d", "--downstream", type=_nonnegative_int_value, default=0, help="downstream bases added to gene selectors")
-    view.add_argument("-a", "--strand-aware", action="store_true", help="apply upstream/downstream relative to gene strand")
-    view.add_argument("-o", "--output", dest="output_mode", choices=["summary", "detail"], default="summary", help="JSONL output payload mode")
-    view.add_argument("-f", "--output-format", choices=["tsv", "jsonl"], default="tsv", help="output format")
-    view.add_argument("-O", "--output-file", help="output directory for TSV mode or file path for JSONL mode")
-    view.add_argument("-P", "--plot", action="store_true", help="render haplotype table plot artifacts")
-    view.add_argument("-F", "--plot-format", choices=["png", "pdf", "svg", "tiff"], default="png", help="plot artifact format")
-    view.add_argument("-p", "--population", dest="population_file", help="tab-separated sample-to-population map")
-    view.add_argument("-m", "--max-diff", type=_max_diff_value, help="merge haplotypes with difference ratio at or below this threshold")
-    view.add_argument("-e", "--geo", dest="geo_file", help="sample coordinate table for geographic haplotype plots")
-    view.add_argument("-C", "--map-facecolor", default="#f5f5f0", help="background color for geographic map plots")
-    view.add_argument("-n", "--network", action="store_true", help="render haplotype network plot")
-    view.add_argument("-N", "--network-method", choices=["tcs", "msn", "mjn"], default="tcs", help="haplotype network inference method")
-    view.add_argument("-H", "--hap-prefix", default="Hap", help="haplotype label prefix")
-    view.add_argument("-D", "--hap-pad", type=_hap_pad_value, default=2, help="zero-padding width for haplotype labels")
+    view_input = view.add_argument_group("Haplotype target options")
+    view_calling = view.add_argument_group("Haplotype calling options")
+    view_annotation = view.add_argument_group("Gene annotation window options")
+    view_output = view.add_argument_group("Output options")
+    view_plotting = view.add_argument_group("Haplotype visualization options")
+    view_network = view.add_argument_group("Haplotype network options")
+    view_labeling = view.add_argument_group("Haplotype labeling options")
+
+    view_input.add_argument("input_vcf", nargs="?", default=None, help="indexed VCF/BCF input path")
+    view_input.add_argument("-r", "--region", dest="region", type=_region_value, help="single selector: chr:start-end or chr:pos")
+    view_input.add_argument("-R", "--regions-file", dest="regions_file", help="BED file with one or more regions")
+    view_input.add_argument("-G", "--gene-id", dest="gene_id", help="gene ID to resolve through --gff/--gff3")
+    view_input.add_argument("-l", "--gene-list", dest="gene_list", help="file containing one gene ID per line")
+    view_input.add_argument("-S", "--samples-file", dest="samples_file", help="optional sample ID list to include")
+    view_calling.add_argument("-b", "--by", choices=["auto", "region", "site"], default="auto", help="haplotype grouping mode")
+    view_calling.add_argument("-i", "--impute", action="store_true", help="treat missing genotypes as reference")
+    view_calling.add_argument("-m", "--max-diff", type=_max_diff_value, help="merge haplotypes with difference ratio at or below this threshold")
+    view_annotation.add_argument("-g", "--gff3", "--gff", help="GFF3/GTF annotation file for gene selectors and plots")
+    view_annotation.add_argument("-u", "--upstream", type=_nonnegative_int_value, default=0, help="upstream bases added to gene selectors")
+    view_annotation.add_argument("-d", "--downstream", type=_nonnegative_int_value, default=0, help="downstream bases added to gene selectors")
+    view_annotation.add_argument("-a", "--strand-aware", action="store_true", help="apply upstream/downstream relative to gene strand")
+    view_output.add_argument("-o", "--output", dest="output_mode", choices=["summary", "detail"], default="summary", help="JSONL output payload mode")
+    view_output.add_argument("-f", "--output-format", choices=["tsv", "jsonl"], default="tsv", help="output format")
+    view_output.add_argument("-O", "--output-file", help="output directory for TSV mode or file path for JSONL mode")
+    view_plotting.add_argument("-P", "--plot", action="store_true", help="render haplotype table plot artifacts")
+    view_plotting.add_argument("-F", "--plot-format", choices=["png", "pdf", "svg", "tiff"], default="png", help="plot artifact format")
+    view_plotting.add_argument("-p", "--population", dest="population_file", help="tab-separated sample-to-population map")
+    view_plotting.add_argument("-e", "--geo", dest="geo_file", help="sample coordinate table for geographic haplotype plots")
+    view_plotting.add_argument("-C", "--map-facecolor", default="#f5f5f0", help="background color for geographic map plots")
+    view_network.add_argument("-n", "--network", action="store_true", help="render haplotype network plot")
+    view_network.add_argument("-N", "--network-method", choices=["tcs", "msn", "mjn"], default="tcs", help="haplotype network inference method")
+    view_labeling.add_argument("-H", "--hap-prefix", default="Hap", help="haplotype label prefix")
+    view_labeling.add_argument("-D", "--hap-pad", type=_hap_pad_value, default=2, help="zero-padding width for haplotype labels")
 
     phenotype = subparsers.add_parser(
         "phenotype",
         aliases=["pheno"],
         help="Analyze phenotype values by haplotype",
         description="Join haplokit hapresult/sample-haplotype tables with phenotype traits.",
+        formatter_class=formatter,
     )
     phenotype_subparsers = phenotype.add_subparsers(dest="phenotype_command", required=True)
 
@@ -171,36 +183,46 @@ def build_parser() -> HaolokitArgumentParser:
         "stat",
         help="Run haplotype-vs-phenotype hypothesis tests",
         description="Run ANOVA and pairwise haplotype tests for one or more numeric phenotype traits.",
+        formatter_class=formatter,
     )
-    stat.add_argument("-H", "--hapresult", "--haplotypes", dest="haplotypes", required=True, help="haplokit hapresult.tsv or two-column sample-haplotype table")
-    stat.add_argument("-P", "--phenotypes", "--phenotype", "--pheno-file", dest="phenotypes", required=True, help="phenotype table; first column is sample ID, remaining columns are traits")
-    stat.add_argument("-t", "--trait", action="append", dest="traits", help="phenotype trait/column to analyze; repeat to select multiple traits")
-    stat.add_argument("-o", "--output", default="phenotype_stats.tsv", help="output TSV for pairwise statistics")
-    stat.add_argument("-s", "--summary-output", help="optional output TSV for per-haplotype summary statistics")
-    stat.add_argument("-m", "--min-hap-size", type=_positive_int_value, default=5, help="minimum numeric samples per haplotype within each test stratum")
-    stat.add_argument("-M", "--method", choices=["welch", "student", "mannwhitney", "tukey"], default="welch", help="pairwise test method")
-    stat.add_argument("-a", "--adjust", choices=["bonferroni", "none"], default="bonferroni", help="p-value adjustment for non-Tukey pairwise tests")
-    stat.add_argument("-p", "--population", "--pop-group", dest="population_file", help="optional sample-to-population table; tests are stratified within each population")
-    stat.add_argument("-d", "--delimiter", choices=["auto", "tab", "comma"], default="auto", dest="hap_delimiter", help="delimiter for hapresult/sample-haplotype input")
-    stat.add_argument("-D", "--phenotype-delimiter", choices=["auto", "tab", "comma"], default="auto", help="delimiter for phenotype input")
-    stat.add_argument("-G", "--population-delimiter", choices=["auto", "tab", "comma"], default="auto", help="delimiter for population input")
+    stat_input = stat.add_argument_group("Haplotype/phenotype input options")
+    stat_test = stat.add_argument_group("Phenotype test options")
+    stat_output = stat.add_argument_group("Output options")
+    stat_parse = stat.add_argument_group("Parsing options")
+    stat_input.add_argument("-H", "--hapresult", "--haplotypes", dest="haplotypes", required=True, help="haplokit hapresult.tsv or two-column sample-haplotype table")
+    stat_input.add_argument("-P", "--phenotypes", "--phenotype", "--pheno-file", dest="phenotypes", required=True, help="phenotype table; first column is sample ID, remaining columns are traits")
+    stat_input.add_argument("-p", "--population", "--pop-group", dest="population_file", help="optional sample-to-population table; tests are stratified within each population")
+    stat_test.add_argument("-t", "--trait", action="append", dest="traits", help="phenotype trait/column to analyze; repeat to select multiple traits")
+    stat_test.add_argument("-m", "--min-hap-size", type=_positive_int_value, default=5, help="minimum numeric samples per haplotype within each test stratum")
+    stat_test.add_argument("-M", "--method", choices=["welch", "student", "mannwhitney", "tukey"], default="welch", help="pairwise test method")
+    stat_test.add_argument("-a", "--adjust", choices=["bonferroni", "none"], default="bonferroni", help="p-value adjustment for non-Tukey pairwise tests")
+    stat_output.add_argument("-o", "--output", default="phenotype_stats.tsv", help="output TSV for pairwise statistics")
+    stat_output.add_argument("-s", "--summary-output", help="optional output TSV for per-haplotype summary statistics")
+    stat_parse.add_argument("-d", "--delimiter", choices=["auto", "tab", "comma"], default="auto", dest="hap_delimiter", help="delimiter for hapresult/sample-haplotype input")
+    stat_parse.add_argument("-D", "--phenotype-delimiter", choices=["auto", "tab", "comma"], default="auto", help="delimiter for phenotype input")
+    stat_parse.add_argument("-G", "--population-delimiter", choices=["auto", "tab", "comma"], default="auto", help="delimiter for population input")
 
     box = phenotype_subparsers.add_parser(
         "box",
         help="Plot a phenotype distribution by haplotype",
         description="Draw a boxplot with jittered sample points for one numeric phenotype trait.",
+        formatter_class=formatter,
     )
-    box.add_argument("-H", "--hapresult", "--haplotypes", dest="haplotypes", required=True, help="haplokit hapresult.tsv or two-column sample-haplotype table")
-    box.add_argument("-P", "--phenotypes", "--phenotype", "--pheno-file", dest="phenotypes", required=True, help="phenotype table; first column is sample ID, remaining columns are traits")
-    box.add_argument("-t", "--trait", required=True, help="phenotype trait/column to plot")
-    box.add_argument("-o", "--output", default="phenotype_box.png", help="output plot path")
-    box.add_argument("-F", "--plot-format", choices=["png", "pdf", "svg", "tiff"], default=None, help="plot format; defaults to output suffix")
-    box.add_argument("-m", "--min-hap-size", type=_positive_int_value, default=5, help="minimum numeric samples per haplotype")
-    box.add_argument("-M", "--method", choices=["welch", "student", "mannwhitney", "tukey"], default="welch", help="pairwise method used for annotated comparisons")
-    box.add_argument("-c", "--comparison", action="append", type=_comparison_value, default=[], help="pair to annotate, e.g. Hap01,Hap02; repeat for multiple pairs")
-    box.add_argument("-d", "--delimiter", choices=["auto", "tab", "comma"], default="auto", dest="hap_delimiter", help="delimiter for hapresult/sample-haplotype input")
-    box.add_argument("-D", "--phenotype-delimiter", choices=["auto", "tab", "comma"], default="auto", help="delimiter for phenotype input")
-    box.add_argument("-T", "--title", help="plot title")
+    box_input = box.add_argument_group("Haplotype/phenotype input options")
+    box_plot = box.add_argument_group("Phenotype plot options")
+    box_compare = box.add_argument_group("Comparison annotation options")
+    box_parse = box.add_argument_group("Parsing options")
+    box_input.add_argument("-H", "--hapresult", "--haplotypes", dest="haplotypes", required=True, help="haplokit hapresult.tsv or two-column sample-haplotype table")
+    box_input.add_argument("-P", "--phenotypes", "--phenotype", "--pheno-file", dest="phenotypes", required=True, help="phenotype table; first column is sample ID, remaining columns are traits")
+    box_plot.add_argument("-t", "--trait", required=True, help="phenotype trait/column to plot")
+    box_plot.add_argument("-o", "--output", default="phenotype_box.png", help="output plot path")
+    box_plot.add_argument("-F", "--plot-format", choices=["png", "pdf", "svg", "tiff"], default=None, help="plot format; defaults to output suffix")
+    box_plot.add_argument("-T", "--title", help="plot title")
+    box_compare.add_argument("-m", "--min-hap-size", type=_positive_int_value, default=5, help="minimum numeric samples per haplotype")
+    box_compare.add_argument("-M", "--method", choices=["welch", "student", "mannwhitney", "tukey"], default="welch", help="pairwise method used for annotated comparisons")
+    box_compare.add_argument("-c", "--comparison", action="append", type=_comparison_value, default=[], help="pair to annotate, e.g. Hap01,Hap02; repeat for multiple pairs")
+    box_parse.add_argument("-d", "--delimiter", choices=["auto", "tab", "comma"], default="auto", dest="hap_delimiter", help="delimiter for hapresult/sample-haplotype input")
+    box_parse.add_argument("-D", "--phenotype-delimiter", choices=["auto", "tab", "comma"], default="auto", help="delimiter for phenotype input")
 
     return parser
 
