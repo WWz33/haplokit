@@ -88,6 +88,37 @@ Output:
 - `out/hapresult.tsv` — per-sample haplotype detail
 - `out/hap_summary.tsv` — haplotype count summary
 
+## Phenotype Statistics and Plots
+
+`haplokit phenotype` joins haplotype assignments with sample phenotype tables. It accepts the
+`hapresult.tsv` written by `haplokit view` or a simple two-column table named like
+`samples,haplotypes`. Phenotype tables use the first column as sample ID and the remaining
+columns as numeric traits.
+
+```bash
+haplokit phenotype stat \
+  --hapresult out/hapresult.tsv \
+  --phenotypes phenotype.csv \
+  --trait yield \
+  --min-hap-size 5 \
+  --output yield_stats.tsv \
+  --summary-output yield_summary.tsv
+
+haplokit phenotype box \
+  --hapresult out/hapresult.tsv \
+  --phenotypes phenotype.csv \
+  --trait yield \
+  --min-hap-size 5 \
+  --comparison Hap01,Hap02 \
+  --plot-format pdf \
+  --output yield_box.pdf
+```
+
+`stat` runs one-way ANOVA per trait and pairwise haplotype tests. Pairwise methods are
+`welch` (default), `student`, `mannwhitney`, and `tukey`; p-values are Bonferroni-adjusted by
+default. Haplotype groups with fewer than `--min-hap-size` numeric observations are excluded
+per trait.
+
 ## Usage Scenarios
 
 ### 1. Region query — strict haplotype grouping

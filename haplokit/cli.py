@@ -58,6 +58,22 @@ def _nonnegative_int_value(value: str) -> int:
     return int(value)
 
 
+def _positive_int_value(value: str) -> int:
+    if not value.isascii() or not value.isdecimal():
+        raise argparse.ArgumentTypeError("value must be a positive integer")
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("value must be a positive integer")
+    return parsed
+
+
+def _comparison_value(value: str) -> tuple[str, str]:
+    fields = [part.strip() for part in value.replace(":", ",").split(",") if part.strip()]
+    if len(fields) != 2:
+        raise argparse.ArgumentTypeError("comparison must look like Hap01,Hap02")
+    return fields[0], fields[1]
+
+
 @dataclass(frozen=True)
 class Selector:
     payload: dict[str, object]
@@ -135,6 +151,34 @@ def build_parser() -> HaolokitArgumentParser:
     view.add_argument("-N", "--network-method", choices=["tcs", "msn", "mjn"], default="tcs")
     view.add_argument("-H", "--hap-prefix", default="Hap")
     view.add_argument("-D", "--hap-pad", type=_hap_pad_value, default=2)
+
+    phenotype = subparsers.add_parser("phenotype", aliases=["pheno"])
+    phenotype_subparsers = phenotype.add_subparsers(dest="phenotype_command", required=True)
+
+    stat = phenotype_subparsers.add_parser("stat")
+    stat.add_argument("--hapresult", "--haplotypes", dest="haplotypes", required=True)
+    stat.add_argument("--phenotypes", "--phenotype", "--pheno-file", dest="phenotypes", required=True)
+    stat.add_argument("-t", "--trait", action="append", dest="traits")
+    stat.add_argument("-o", "--output", default="phenotype_stats.tsv")
+    stat.add_argument("--summary-output")
+    stat.add_argument("--min-hap-size", type=_positive_int_value, default=5)
+    stat.add_argument("--method", choices=["welch", "student", "mannwhitney", "tukey"], default="welch")
+    stat.add_argument("--adjust", choices=["bonferroni", "none"], default="bonferroni")
+    stat.add_argument("--delimiter", choices=["auto", "tab", "comma"], default="auto", dest="hap_delimiter")
+    stat.add_argument("--phenotype-delimiter", choices=["auto", "tab", "comma"], default="auto")
+
+    box = phenotype_subparsers.add_parser("box")
+    box.add_argument("--hapresult", "--haplotypes", dest="haplotypes", required=True)
+    box.add_argument("--phenotypes", "--phenotype", "--pheno-file", dest="phenotypes", required=True)
+    box.add_argument("-t", "--trait", required=True)
+    box.add_argument("-o", "--output", default="phenotype_box.png")
+    box.add_argument("-F", "--plot-format", choices=["png", "pdf", "svg", "tiff"], default=None)
+    box.add_argument("--min-hap-size", type=_positive_int_value, default=5)
+    box.add_argument("--method", choices=["welch", "student", "mannwhitney", "tukey"], default="welch")
+    box.add_argument("--comparison", action="append", type=_comparison_value, default=[], help="Pair to annotate, e.g. Hap01,Hap02")
+    box.add_argument("--delimiter", choices=["auto", "tab", "comma"], default="auto", dest="hap_delimiter")
+    box.add_argument("--phenotype-delimiter", choices=["auto", "tab", "comma"], default="auto")
+    box.add_argument("--title")
 
     return parser
 
@@ -671,9 +715,66 @@ def _write_plot_artifacts(
     return written
 
 
+def _run_phenotype(args) -> int:
+    if args.phenotype_command == "stat":
+        from haplokit._phenotype import (
+            load_phenotype_dataset,
+            pairwise_statistics,
+            summarize_groups,
+            write_stat_tsv,
+            write_summary_tsv,
+        )
+
+        dataset = load_phenotype_dataset(
+            args.haplotypes,
+            args.phenotypes,
+            traits=args.traits or None,
+            hap_delimiter=args.hap_delimiter,
+            phenotype_delimiter=args.phenotype_delimiter,
+        )
+        rows = pairwise_statistics(
+            dataset.records,
+            traits=dataset.traits,
+            min_hap_size=args.min_hap_size,
+            method=args.method,
+            adjust=args.adjust,
+        )
+        write_stat_tsv(rows, args.output)
+        if args.summary_output:
+            summary_rows = summarize_groups(
+                dataset.records,
+                traits=dataset.traits,
+                min_hap_size=args.min_hap_size,
+            )
+            write_summary_tsv(summary_rows, args.summary_output)
+        return 0
+
+    if args.phenotype_command == "box":
+        from haplokit.plot import plot_hap_phenotype_box
+
+        plot_hap_phenotype_box(
+            args.haplotypes,
+            args.phenotypes,
+            args.trait,
+            args.output,
+            min_hap_size=args.min_hap_size,
+            method=args.method,
+            comparisons=args.comparison,
+            hap_delimiter=args.hap_delimiter,
+            phenotype_delimiter=args.phenotype_delimiter,
+            title=args.title,
+            fmt=args.plot_format,
+        )
+        return 0
+
+    raise RuntimeError(f"unsupported phenotype command: {args.phenotype_command}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command in {"phenotype", "pheno"}:
+        return _run_phenotype(args)
     if args.command != "view":
         parser.error("a subcommand is required")
     selectors = _selectors_from_args(args)

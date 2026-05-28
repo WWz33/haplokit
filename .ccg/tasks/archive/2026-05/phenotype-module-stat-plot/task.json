@@ -1,0 +1,12 @@
+{
+  "id": "phenotype-module-stat-plot",
+  "title": "Implement phenotype statistics and plotting module from reference repos",
+  "status": "completed",
+  "complexity": "L",
+  "risk": "medium",
+  "domain": "analysis",
+  "currentPhase": "completed",
+  "nextAction": "Archived after verification",
+  "createdAt": "2026-05-28T00:00:00Z",
+  "branch": "master"
+}

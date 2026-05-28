@@ -13,6 +13,7 @@ authors = [{ name = "WWz33" }]
 keywords = ["haplotype", "vcf", "genomics", "bioinformatics", "visualization"]
 dependencies = [
   "matplotlib>=3.8",
+  "scipy>=1.11",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
