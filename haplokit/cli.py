@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+from haplokit._backend import CppBackendBuildError, find_haplokit_cpp
 from haplokit.summary_contract import (
     build_hap_label_map,
     hap_samples,
@@ -223,44 +223,12 @@ def _write_jsonl(rows: Iterable[dict[str, object]], output_file: str | None) -> 
 
 
 def _cpp_backend_path() -> Path:
-    env_path = os.environ.get("HAPLOKIT_CPP_BIN")
-    candidates: list[Path] = []
-    if env_path:
-        candidates.append(Path(env_path))
-
-    package_bin = Path(__file__).resolve().parent / "_bin" / "haplokit_cpp"
-    candidates.append(package_bin)
-
+    package_dir = Path(__file__).resolve().parent
     repo_root = Path(__file__).resolve().parents[1]
-    candidates.extend(
-        [
-            repo_root / "build-wsl" / "haplokit_cpp",
-            repo_root / "build" / "haplokit_cpp",
-        ]
-    )
-
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-
-    repo_root = Path(__file__).resolve().parents[1]
-    build_dir = repo_root / "build-wsl"
     try:
-        subprocess.run(["cmake", "-S", str(repo_root), "-B", str(build_dir)], check=True, cwd=repo_root)
-        subprocess.run(["cmake", "--build", str(build_dir), "--clean-first", "-j1"], check=True, cwd=repo_root)
-    except Exception:
-        pass
-
-    refreshed_candidates = []
-    if env_path:
-        refreshed_candidates.append(Path(env_path))
-    refreshed_candidates.extend([build_dir / "haplokit_cpp", repo_root / "build" / "haplokit_cpp"])
-    for candidate in refreshed_candidates:
-        if candidate.exists():
-            return candidate
-    raise FileNotFoundError(
-        "haplokit_cpp backend not found; build the C++ target first or set HAPLOKIT_CPP_BIN"
-    )
+        return find_haplokit_cpp(repo_root=repo_root, package_dir=package_dir, auto_build=True)
+    except CppBackendBuildError as exc:
+        raise FileNotFoundError(str(exc)) from exc
 
 
 def _resolve_gene_region(

@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 import os
 
+from haplokit._backend import PYTHON_BUILD_DIR
+
 
 def find_network_backend() -> Optional[Path]:
     """Find haplokit_network_backend executable."""
@@ -27,7 +29,7 @@ def find_network_backend() -> Optional[Path]:
 
     # Check build directory
     repo_root = package_dir.parent
-    for build_dir in ["build-wsl", "build", "."]:
+    for build_dir in ["build-wsl", "build", "build-python-package", PYTHON_BUILD_DIR, "."]:
         backend = repo_root / build_dir / "haplokit_network_backend"
         if backend.exists():
             return backend

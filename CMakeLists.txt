@@ -18,9 +18,13 @@ add_library(haplokit_core
     src/cpp/view_backend.cpp
     src/cpp/gff_annotator.cpp
     deps/gffsub/src/gff3_parser.cpp
-    deps/gffsub/src/gff3_index.cpp
-    deps/gffsub/src/gff3_filter.cpp
-    deps/gffsub/src/gff3_output.cpp
+    deps/gffsub/src/gtf_parser.cpp
+    deps/gffsub/src/attributes.cpp
+    deps/gffsub/src/annotation_index.cpp
+    deps/gffsub/src/region.cpp
+    deps/gffsub/src/annotation_filter.cpp
+    deps/gffsub/src/isoform_filter.cpp
+    deps/gffsub/src/annotation_output.cpp
 )
 
 target_include_directories(haplokit_core

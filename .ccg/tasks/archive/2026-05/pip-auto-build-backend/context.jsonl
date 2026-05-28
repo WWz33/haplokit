@@ -1,0 +1,5 @@
+{"path":"setup.py","reason":"Current build_py hook runs CMake for normal package builds"}
+{"path":"pyproject.toml","reason":"Build backend and package metadata"}
+{"path":"haplokit/cli.py","reason":"Backend discovery and runtime auto-build fallback"}
+{"path":"tests/python/test_packaging_contract.py","reason":"Packaging contract expectations"}
+{"path":"README.md","reason":"Install and backend documentation"}

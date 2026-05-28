@@ -12,6 +12,7 @@ recursive-include deps/gffsub src/*.cpp src/*.hpp LICENSE CMakeLists.txt Makefil
 recursive-include deps/nlohmann *.hpp
 recursive-include deps/htslib *
 recursive-include src/cpp *.cpp *.h
+recursive-include src/cpp/third_party *.hpp
 recursive-include tests/cpp *.cpp
 recursive-include tests/python *.py
 recursive-include data *

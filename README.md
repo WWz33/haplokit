@@ -16,6 +16,24 @@ pip install haplokit
 
 > Source build requires Linux/WSL, Python 3.10+, C++17 toolchain, CMake 3.22+ — see [Contributing](#contributing).
 
+From a git clone:
+
+```bash
+pip install .
+```
+
+For editable development installs, the PEP 660 editable wheel hook builds the C++ backend into the source tree:
+
+```bash
+pip install -e .
+```
+
+If the backend is built elsewhere, point the CLI at it explicitly:
+
+```bash
+export HAPLOKIT_CPP_BIN=/path/to/haplokit_cpp
+```
+
 ## Quick Start
 
 ```bash
@@ -266,8 +284,8 @@ C++ backend (`haplokit_cpp`) handles VCF reading and haplotype grouping. Discove
 
 1. `HAPLOKIT_CPP_BIN` env var
 2. Packaged binary: `haplokit/_bin/haplokit_cpp`
-3. Repo build: `build-wsl/haplokit_cpp` → `build/haplokit_cpp`
-4. Fallback: auto-run `cmake` build
+3. Repo build: `build-wsl/haplokit_cpp` → `build/haplokit_cpp` → `build-haplokit-python/haplokit_cpp`
+4. Fallback: auto-run `cmake` build from the source tree and report the CMake error if it fails
 
 Vendored libraries:
 

@@ -1,0 +1,12 @@
+{
+  "id": "pip-auto-build-backend",
+  "title": "Make pip installs build haplokit C++ backend automatically",
+  "status": "completed",
+  "complexity": "M",
+  "risk": "medium",
+  "domain": "packaging",
+  "currentPhase": "completed",
+  "nextAction": "Archived after implementation, WSL editable install validation, and sdist install validation",
+  "createdAt": "2026-05-28T00:00:00Z",
+  "branch": "master"
+}

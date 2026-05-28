@@ -5,7 +5,7 @@
 
 namespace gffsub {
 
-void filter_longest(GffData& data, IdIndex& /*idx*/, std::string_view feature_type, size_t num_threads) {
+void filter_longest_isoform(GffData& data, IdIndex& /*idx*/, std::string_view feature_type, size_t num_threads) {
     // Build gene -> [mRNA indices] index once
     std::unordered_map<std::string, std::vector<int>> gene_to_mRNAs;
     for (int i = 0; i < static_cast<int>(data.records.size()); ++i) {
@@ -153,6 +153,10 @@ void filter_longest(GffData& data, IdIndex& /*idx*/, std::string_view feature_ty
     if (!feature_type.empty()) {
         filter_by_feature(data, feature_type);
     }
+}
+
+void filter_longest(GffData& data, IdIndex& idx, std::string_view feature_type, size_t num_threads) {
+    filter_longest_isoform(data, idx, feature_type, num_threads);
 }
 
 }  // namespace gffsub

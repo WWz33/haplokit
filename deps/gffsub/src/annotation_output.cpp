@@ -102,6 +102,10 @@ void print_gtf(std::ostream& out, const GffData& data, OutputFormat fmt) {
     }
 }
 
+void print_gtf3(std::ostream& out, const GffData& data) {
+    print_gtf(out, data, OutputFormat::GTF3);
+}
+
 void print_bed(std::ostream& out, const GffData& data) {
     // BED is 0-based half-open, GFF is 1-based inclusive
     // BED start = GFF start - 1, BED end = GFF end

@@ -5,11 +5,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import haplokit
+from haplokit._backend import CppBackendBuildError, compatible_build_dir, find_haplokit_cpp
 
 
 def test_pyproject_declares_haplokit_console_entrypoint_and_linux_scope() -> None:
@@ -21,8 +24,13 @@ def test_pyproject_declares_haplokit_console_entrypoint_and_linux_scope() -> Non
 
 def test_setup_py_defines_cpp_build_hook() -> None:
     setup_py = (ROOT / "setup.py").read_text(encoding="utf-8")
+    assert "class BinaryDistribution" in setup_py
+    assert "def has_ext_modules" in setup_py
     assert "class BuildPyWithCpp" in setup_py
-    assert "cmdclass={\"build_py\": BuildPyWithCpp}" in setup_py
+    assert 'cmdclass = {"build_py": BuildPyWithCpp}' in setup_py
+    assert "class EditableWheelWithCpp" in setup_py
+    assert 'cmdclass["editable_wheel"] = EditableWheelWithCpp' in setup_py
+    assert "distclass=BinaryDistribution" in setup_py
 
 
 def test_project_version_matches_package_version() -> None:
@@ -47,7 +55,65 @@ def test_module_entrypoint_invokes_cli() -> None:
 
 def test_cli_checks_packaged_backend_path() -> None:
     cli_py = (ROOT / "haplokit" / "cli.py").read_text(encoding="utf-8")
-    assert 'Path(__file__).resolve().parent / "_bin" / "haplokit_cpp"' in cli_py
+    assert "find_haplokit_cpp" in cli_py
+
+
+def test_network_backend_checks_python_build_dir() -> None:
+    network_py = (ROOT / "haplokit" / "network.py").read_text(encoding="utf-8")
+    assert "build-python-package" in network_py
+    assert "PYTHON_BUILD_DIR" in network_py
+
+
+def test_find_haplokit_cpp_auto_builds_source_tree(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    package_dir = repo_root / "haplokit"
+    build_dir = repo_root / "build-wsl"
+    package_dir.mkdir(parents=True)
+    (repo_root / "CMakeLists.txt").write_text("cmake_minimum_required(VERSION 3.22)\n", encoding="utf-8")
+    monkeypatch.delenv("HAPLOKIT_CPP_BIN", raising=False)
+
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(cmd)
+        if cmd[:2] == ["cmake", "--build"]:
+            build_dir.mkdir()
+            (build_dir / "haplokit_cpp").write_text("", encoding="utf-8")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr("haplokit._backend.subprocess.run", fake_run)
+
+    assert find_haplokit_cpp(repo_root, package_dir) == build_dir / "haplokit_cpp"
+    assert calls[0][:3] == ["cmake", "-S", str(repo_root.resolve())]
+    assert calls[1][:2] == ["cmake", "--build"]
+
+
+def test_find_haplokit_cpp_reports_cmake_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    package_dir = repo_root / "haplokit"
+    package_dir.mkdir(parents=True)
+    (repo_root / "CMakeLists.txt").write_text("cmake_minimum_required(VERSION 3.22)\n", encoding="utf-8")
+    monkeypatch.delenv("HAPLOKIT_CPP_BIN", raising=False)
+
+    def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(cmd, 1, "", "missing zlib")
+
+    monkeypatch.setattr("haplokit._backend.subprocess.run", fake_run)
+
+    with pytest.raises(CppBackendBuildError, match="missing zlib"):
+        find_haplokit_cpp(repo_root, package_dir)
+
+
+def test_incompatible_cmake_cache_uses_python_build_dir(tmp_path: Path) -> None:
+    repo_root = (tmp_path / "repo").resolve()
+    build_dir = repo_root / "build-wsl"
+    build_dir.mkdir(parents=True)
+    (build_dir / "CMakeCache.txt").write_text(
+        "CMAKE_HOME_DIRECTORY:INTERNAL=/old/source/tree\n",
+        encoding="utf-8",
+    )
+
+    assert compatible_build_dir(repo_root, build_dir) == repo_root / "build-haplokit-python"
 
 
 def test_vendored_htscodecs_version_header_is_present_for_sdist_builds() -> None:
@@ -60,3 +126,9 @@ def test_vendored_htscodecs_version_header_is_present_for_sdist_builds() -> None
         encoding="utf-8"
     )
     assert f'#define HTSCODECS_VERSION_TEXT "{expected}"' in version_h
+
+
+def test_sdist_includes_network_json_header() -> None:
+    manifest = (ROOT / "MANIFEST.in").read_text(encoding="utf-8")
+    assert "recursive-include src/cpp/third_party *.hpp" in manifest
+    assert (ROOT / "src" / "cpp" / "third_party" / "json.hpp").exists()

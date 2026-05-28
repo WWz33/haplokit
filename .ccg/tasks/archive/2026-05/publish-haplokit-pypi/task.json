@@ -1,0 +1,12 @@
+{
+  "id": "publish-haplokit-pypi",
+  "title": "Publish haplokit package to PyPI",
+  "status": "completed",
+  "complexity": "M",
+  "risk": "high",
+  "domain": "release",
+  "currentPhase": "completed",
+  "nextAction": "Archived after build, twine check, and PyPI upload preparation",
+  "createdAt": "2026-05-28T00:00:00Z",
+  "branch": "master"
+}

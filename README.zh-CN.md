@@ -16,6 +16,24 @@ pip install haplokit
 
 > 源码构建需要 Linux/WSL、Python 3.10+、C++17 工具链、CMake 3.22+ — 见[贡献开发](#贡献开发)。
 
+从 git clone 的源码目录安装：
+
+```bash
+pip install .
+```
+
+开发模式安装也会通过 PEP 660 editable wheel hook 把 C++ 后端编译到源码树内：
+
+```bash
+pip install -e .
+```
+
+如果后端编译在其他位置，可以显式指定：
+
+```bash
+export HAPLOKIT_CPP_BIN=/path/to/haplokit_cpp
+```
+
 ## 快速开始
 
 ```bash
@@ -266,8 +284,8 @@ C++ 后端（`haplokit_cpp`）处理 VCF 读取和单倍型分组。发现顺序
 
 1. `HAPLOKIT_CPP_BIN` 环境变量
 2. 打包内二进制：`haplokit/_bin/haplokit_cpp`
-3. 仓库构建产物：`build-wsl/haplokit_cpp` → `build/haplokit_cpp`
-4. 回退：自动运行 `cmake` 构建
+3. 仓库构建产物：`build-wsl/haplokit_cpp` → `build/haplokit_cpp` → `build-haplokit-python/haplokit_cpp`
+4. 回退：从源码树自动运行 `cmake` 构建；失败时报告 CMake 的真实错误
 
 供应商依赖库：
 

@@ -1,5 +1,6 @@
 #include "gff3.hpp"
 
+#include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -61,6 +62,26 @@ static int check_self_contained_annotation() {
         }
     }
 
+    const auto parsed = gffsub::parse_attributes(
+        "ID=gene1;Name=GeneOne;Alias=Alpha,Beta;Parent=tx1,tx2");
+    const auto name_it = parsed.find("Name");
+    const auto alias_it = parsed.find("Alias");
+    const auto parent_it = parsed.find("Parent");
+    if (name_it == parsed.end() || name_it->second.size() != 1 || name_it->second.front() != "GeneOne") {
+        std::cerr << "parse_attributes failed for Name\n";
+        return 1;
+    }
+    if (alias_it == parsed.end() || alias_it->second.size() != 2 || alias_it->second.front() != "Alpha" ||
+        alias_it->second.back() != "Beta") {
+        std::cerr << "parse_attributes failed for Alias\n";
+        return 1;
+    }
+    if (parent_it == parsed.end() || parent_it->second.size() != 2 || parent_it->second.front() != "tx1" ||
+        parent_it->second.back() != "tx2") {
+        std::cerr << "parse_attributes failed for Parent\n";
+        return 1;
+    }
+
     const auto children = index.children_of("gene1");
     if (children.size() != 2) {
         std::cerr << "children_of failed for gene1\n";
@@ -118,6 +139,7 @@ static int check_self_contained_annotation() {
         return 1;
     }
 
+    std::remove(path.c_str());
     return 0;
 }
 

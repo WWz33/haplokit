@@ -1,0 +1,6 @@
+{"path":"pyproject.toml","reason":"Python package metadata, dependencies, version, scripts"}
+{"path":"setup.py","reason":"Custom build_py invokes CMake and packages haplokit_cpp"}
+{"path":"CMakeLists.txt","reason":"Native backend build graph and tests"}
+{"path":"cmake/htslib.cmake","reason":"Vendored/system htslib configuration impacts source builds"}
+{"path":"README.md","reason":"Long description and install instructions used by package metadata"}
+{"path":"MANIFEST.in","reason":"Source distribution file inclusion rules"}
