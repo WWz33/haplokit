@@ -45,10 +45,12 @@ geneHapR/
 
 # Internal docs and AI config (not for public repo)
 CLAUDE.md
+doc/
 docs/
 
 # Stray outputs
 *.tmp
+style_preview/
 
 # Research / scratch
 hap_network/

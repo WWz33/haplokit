@@ -1,4 +1,0 @@
-{"path":"deps/gffsub","reason":"Embedded gffsub copy used by haplokit"}
-{"path":"F:/codex/gffsub","reason":"Reference gffsub package requested by user"}
-{"path":"src/cpp/gff_annotator.*","reason":"Primary haplokit call site for gffsub APIs"}
-{"path":"CMakeLists.txt","reason":"Build integration for embedded gffsub sources"}
