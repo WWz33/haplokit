@@ -1,0 +1,12 @@
+{
+  "id": "add-cmake-build-dependency",
+  "title": "Add CMake as a pip build dependency for haplokit source installs",
+  "status": "completed",
+  "complexity": "S",
+  "risk": "medium",
+  "domain": "packaging",
+  "currentPhase": "completed",
+  "nextAction": "Archived after adding cmake build dependency and validating 0.1.3 sdist install",
+  "createdAt": "2026-05-28T00:00:00Z",
+  "branch": "master"
+}

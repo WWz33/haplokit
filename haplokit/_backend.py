@@ -81,6 +81,28 @@ def _format_failed_command(cmd: list[str], completed: subprocess.CompletedProces
     return f"{' '.join(cmd)} failed:\n{detail}"
 
 
+def _cmake_base_command() -> list[str]:
+    try:
+        import cmake  # type: ignore[import-not-found]
+    except Exception:
+        return ["cmake"]
+
+    bin_dir = getattr(cmake, "CMAKE_BIN_DIR", None)
+    if bin_dir:
+        candidate = Path(bin_dir) / ("cmake.exe" if os.name == "nt" else "cmake")
+        if candidate.exists():
+            return [str(candidate)]
+
+    package_file = getattr(cmake, "__file__", None)
+    if package_file:
+        package_dir = Path(package_file).resolve().parent
+        for candidate in executable_candidates(package_dir / "data" / "bin", "cmake"):
+            if candidate.exists():
+                return [str(candidate)]
+
+    return ["cmake"]
+
+
 def _run_checked(cmd: list[str], repo_root: Path) -> None:
     try:
         completed = subprocess.run(
@@ -104,12 +126,13 @@ def build_cpp_backends(repo_root: Path, build_dir: Path | None = None) -> dict[s
             f"cannot auto-build {CPP_BACKEND}: CMakeLists.txt not found at {repo_root}"
         )
 
+    cmake_cmd = _cmake_base_command()
     _run_checked(
-        ["cmake", "-S", str(repo_root), "-B", str(build_dir), "-DCMAKE_BUILD_TYPE=Release"],
+        [*cmake_cmd, "-S", str(repo_root), "-B", str(build_dir), "-DCMAKE_BUILD_TYPE=Release"],
         repo_root,
     )
     _run_checked(
-        ["cmake", "--build", str(build_dir), "--parallel", str(os.cpu_count() or 1)],
+        [*cmake_cmd, "--build", str(build_dir), "--parallel", str(os.cpu_count() or 1)],
         repo_root,
     )
 

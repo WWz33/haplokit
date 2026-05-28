@@ -20,6 +20,7 @@ def test_pyproject_declares_haplokit_console_entrypoint_and_linux_scope() -> Non
     assert 'name = "haplokit"' in pyproject
     assert 'haplokit = "haplokit.cli:main"' in pyproject
     assert "Operating System :: POSIX :: Linux" in pyproject
+    assert '"cmake>=3.22"' in pyproject
 
 
 def test_setup_py_defines_cpp_build_hook() -> None:
@@ -84,8 +85,9 @@ def test_find_haplokit_cpp_auto_builds_source_tree(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr("haplokit._backend.subprocess.run", fake_run)
 
     assert find_haplokit_cpp(repo_root, package_dir) == build_dir / "haplokit_cpp"
-    assert calls[0][:3] == ["cmake", "-S", str(repo_root.resolve())]
-    assert calls[1][:2] == ["cmake", "--build"]
+    assert "-S" in calls[0]
+    assert str(repo_root.resolve()) in calls[0]
+    assert "--build" in calls[1]
 
 
 def test_find_haplokit_cpp_reports_cmake_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
