@@ -358,6 +358,78 @@ def pairwise_statistics(
     return rows
 
 
+def population_pairwise_statistics(
+    records: Iterable[PhenotypeRecord],
+    *,
+    traits: Sequence[str] | None = None,
+    min_hap_size: int = 5,
+    method: str = "welch",
+    adjust: str = "bonferroni",
+    alpha: float = 0.05,
+    haplotypes: Sequence[str] | None = None,
+    populations: Sequence[str] | None = None,
+) -> list[dict[str, object]]:
+    """Compute per-haplotype phenotype comparisons across populations."""
+    stats = _require_scipy()
+    record_list = list(records)
+    selected_traits = list(traits) if traits is not None else _traits_from_records(record_list)
+    selected_haplotypes = list(haplotypes) if haplotypes is not None else sort_haplotype_labels(
+        {record.haplotype for record in record_list}
+    )
+    selected_populations = _population_strata(record_list, populations)
+    rows: list[dict[str, object]] = []
+
+    for trait in selected_traits:
+        for haplotype in selected_haplotypes:
+            grouped: dict[str, list[float]] = defaultdict(list)
+            for record in record_list:
+                if record.trait == trait and record.haplotype == haplotype and record.population:
+                    grouped[record.population].append(record.value)
+            grouped = {
+                population: grouped[population]
+                for population in selected_populations
+                if population and len(grouped.get(population, [])) >= min_hap_size
+            }
+            if len(grouped) < 2:
+                continue
+
+            labels = list(grouped)
+            values = [grouped[label] for label in labels]
+            effective_n = sum(len(group) for group in values)
+            anova_f, anova_p = _anova(stats, values)
+            pair_rows = _pairwise_rows(stats, labels, values, method)
+            pair_count = len(pair_rows)
+            effective_adjust = "none" if method == "tukey" else adjust
+            for group1, group2, pair_stat, p_value in pair_rows:
+                vals1 = grouped[group1]
+                vals2 = grouped[group2]
+                p_adjusted = _adjust_p_value(p_value, pair_count, effective_adjust)
+                rows.append(
+                    {
+                        "trait": trait,
+                        "haplotype": haplotype,
+                        "group1": group1,
+                        "group2": group2,
+                        "count1": len(vals1),
+                        "count2": len(vals2),
+                        "mean1": _mean(vals1),
+                        "mean2": _mean(vals2),
+                        "std1": _std(vals1),
+                        "std2": _std(vals2),
+                        "anova_f": anova_f,
+                        "anova_p": anova_p,
+                        "method": method,
+                        "pairwise_stat": pair_stat,
+                        "p_value": p_value,
+                        "p_adjusted": p_adjusted,
+                        "significance": significance_label(p_adjusted),
+                        "reject": _finite(p_adjusted) and p_adjusted < alpha,
+                        "effective_n": effective_n,
+                    }
+                )
+    return rows
+
+
 def write_stat_tsv(rows: Sequence[dict[str, object]], output_path: str | Path) -> Path:
     return _write_tsv(STAT_COLUMNS, rows, output_path)
 

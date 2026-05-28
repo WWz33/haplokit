@@ -214,7 +214,7 @@ def build_parser() -> HaolokitArgumentParser:
     box_parse = box.add_argument_group("Parsing options")
     box_input.add_argument("-H", "--hapresult", "--haplotypes", dest="haplotypes", required=True, help="haplokit hapresult.tsv or two-column sample-haplotype table")
     box_input.add_argument("-P", "--phenotypes", "--phenotype", "--pheno-file", dest="phenotypes", required=True, help="phenotype table; first column is sample ID, remaining columns are traits")
-    box_input.add_argument("-p", "--population", "--pop-group", dest="population_file", help="optional sample-to-population table; boxplots are faceted by population")
+    box_input.add_argument("-p", "--population", "--pop-group", dest="population_file", help="optional sample-to-population table; boxplots are grouped by population")
     box_plot.add_argument("-t", "--trait", required=True, help="phenotype trait/column to plot")
     box_plot.add_argument("-o", "--output", default="phenotype_box.png", help="output plot path")
     box_plot.add_argument("-F", "--plot-format", choices=["png", "pdf", "svg", "tiff"], default=None, help="plot format; defaults to output suffix")

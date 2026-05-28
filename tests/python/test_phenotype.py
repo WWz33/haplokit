@@ -13,10 +13,12 @@ from haplokit._phenotype import (
     PhenotypeRecord,
     load_phenotype_dataset,
     pairwise_statistics,
+    population_pairwise_statistics,
     read_population_groups,
     read_sample_haplotypes,
     summarize_groups,
 )
+import haplokit._phenotype_plot as phenotype_plot
 from haplokit.cli import build_parser, main
 from haplokit.plot import plot_hap_phenotype_box
 
@@ -74,6 +76,60 @@ def _write_population(path: Path) -> None:
                 "S5\tPopA",
                 "S6\tPopB",
                 "S7\tPopB",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def _write_balanced_population_box_inputs(haplotypes: Path, phenotype: Path, population: Path) -> None:
+    haplotypes.write_text(
+        "\n".join(
+            [
+                "sample\thaplotype",
+                "A1\tHap01",
+                "A2\tHap01",
+                "A3\tHap02",
+                "A4\tHap02",
+                "B1\tHap01",
+                "B2\tHap01",
+                "B3\tHap02",
+                "B4\tHap02",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    phenotype.write_text(
+        "\n".join(
+            [
+                "sample,yield",
+                "A1,1.0",
+                "A2,1.2",
+                "A3,2.0",
+                "A4,2.2",
+                "B1,3.0",
+                "B2,3.2",
+                "B3,4.0",
+                "B4,4.2",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    population.write_text(
+        "\n".join(
+            [
+                "sample\tpopulation",
+                "A1\tPopA",
+                "A2\tPopA",
+                "A3\tPopA",
+                "A4\tPopA",
+                "B1\tPopB",
+                "B2\tPopB",
+                "B3\tPopB",
+                "B4\tPopB",
             ]
         )
         + "\n",
@@ -280,6 +336,32 @@ def test_phenotype_population_groups_include_unknown_for_missing_samples(tmp_pat
 
     assert dataset.populations == ("PopA", "Unknown")
     assert {item["population"] for item in summary} == {"PopA", "Unknown"}
+
+
+def test_population_pairwise_statistics_compares_populations_within_haplotype() -> None:
+    records = (
+        PhenotypeRecord("A1", "Hap01", "yield", 1.0, "PopA"),
+        PhenotypeRecord("A2", "Hap01", "yield", 1.2, "PopA"),
+        PhenotypeRecord("B1", "Hap01", "yield", 3.0, "PopB"),
+        PhenotypeRecord("B2", "Hap01", "yield", 3.2, "PopB"),
+        PhenotypeRecord("A3", "Hap02", "yield", 5.0, "PopA"),
+    )
+
+    rows = population_pairwise_statistics(
+        records,
+        traits=["yield"],
+        haplotypes=["Hap01"],
+        populations=["PopA", "PopB"],
+        min_hap_size=2,
+    )
+
+    assert len(rows) == 1
+    assert rows[0]["haplotype"] == "Hap01"
+    assert rows[0]["group1"] == "PopA"
+    assert rows[0]["group2"] == "PopB"
+    assert rows[0]["count1"] == 2
+    assert rows[0]["count2"] == 2
+    assert rows[0]["effective_n"] == 4
 
 
 def test_phenotype_cli_stat_and_box_write_outputs(tmp_path: Path) -> None:
@@ -503,20 +585,18 @@ def test_plot_hap_phenotype_box_is_exported(tmp_path: Path) -> None:
     assert rendered.suffix == ".svg"
 
 
-def test_plot_hap_phenotype_box_facets_population_groups(tmp_path: Path) -> None:
-    hapresult = tmp_path / "hapresult.tsv"
+def test_plot_hap_phenotype_box_groups_population_boxes(tmp_path: Path) -> None:
+    hapresult = tmp_path / "haplotypes.tsv"
     phenotype = tmp_path / "phenotype.csv"
     population = tmp_path / "popgroup.tsv"
-    _write_hapresult(hapresult)
-    _write_phenotype(phenotype)
-    _write_population(population)
+    _write_balanced_population_box_inputs(hapresult, phenotype, population)
 
     rendered = plot_hap_phenotype_box(
         hapresult,
         phenotype,
         "yield",
         tmp_path / "yield_by_population.svg",
-        min_hap_size=1,
+        min_hap_size=2,
         population_file=population,
         fmt="svg",
     )
@@ -526,6 +606,9 @@ def test_plot_hap_phenotype_box_facets_population_groups(tmp_path: Path) -> None
     rendered_text = rendered.read_text(encoding="utf-8")
     assert "PopA" in rendered_text
     assert "PopB" in rendered_text
+    assert "Hap01" in rendered_text
+    assert "Hap02" in rendered_text
+    assert "*" in rendered_text
 
 
 def test_plot_hap_phenotype_box_filters_records_per_population_panel(tmp_path: Path) -> None:
@@ -557,14 +640,76 @@ def test_plot_hap_phenotype_box_filters_records_per_population_panel(tmp_path: P
     assert rendered_text.count("Hap04") == 1
 
 
+def test_population_grouped_box_emits_within_and_between_annotations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    records = (
+        PhenotypeRecord("A1", "Hap01", "yield", 1.0, "PopA"),
+        PhenotypeRecord("A2", "Hap01", "yield", 1.2, "PopA"),
+        PhenotypeRecord("A3", "Hap02", "yield", 2.0, "PopA"),
+        PhenotypeRecord("A4", "Hap02", "yield", 2.2, "PopA"),
+        PhenotypeRecord("B1", "Hap01", "yield", 3.0, "PopB"),
+        PhenotypeRecord("B2", "Hap01", "yield", 3.2, "PopB"),
+        PhenotypeRecord("B3", "Hap02", "yield", 4.0, "PopB"),
+        PhenotypeRecord("B4", "Hap02", "yield", 4.2, "PopB"),
+    )
+    captured: list[tuple[float, float, str]] = []
+
+    def capture_annotations(_ax, annotations):
+        captured.extend(annotations)
+
+    monkeypatch.setattr(phenotype_plot, "_draw_stat_annotations_inside", capture_annotations)
+
+    plot_hap_phenotype_box(
+        records,
+        trait="yield",
+        output_path=tmp_path / "grouped.svg",
+        min_hap_size=2,
+        fmt="svg",
+    )
+
+    distances = sorted(round(abs(x2 - x1), 2) for x1, x2, _ in captured)
+    assert len(captured) == 4
+    assert distances[:2] == [0.36, 0.36]
+    assert distances[2:] == [1.0, 1.0]
+
+
+def test_single_haplotype_population_box_emits_only_between_annotations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    records = (
+        PhenotypeRecord("A1", "Hap01", "yield", 1.0, "PopA"),
+        PhenotypeRecord("A2", "Hap01", "yield", 1.2, "PopA"),
+        PhenotypeRecord("B1", "Hap01", "yield", 3.0, "PopB"),
+        PhenotypeRecord("B2", "Hap01", "yield", 3.2, "PopB"),
+    )
+    captured: list[tuple[float, float, str]] = []
+
+    def capture_annotations(_ax, annotations):
+        captured.extend(annotations)
+
+    monkeypatch.setattr(phenotype_plot, "_draw_stat_annotations_inside", capture_annotations)
+
+    plot_hap_phenotype_box(
+        records,
+        trait="yield",
+        output_path=tmp_path / "single_hap.svg",
+        min_hap_size=2,
+        fmt="svg",
+    )
+
+    assert len(captured) == 1
+    assert round(abs(captured[0][1] - captured[0][0]), 2) == 1.0
+
+
 def test_phenotype_cli_box_accepts_population_group(tmp_path: Path) -> None:
-    hapresult = tmp_path / "hapresult.tsv"
+    hapresult = tmp_path / "haplotypes.tsv"
     phenotype = tmp_path / "phenotype.csv"
     population = tmp_path / "popgroup.tsv"
     box_out = tmp_path / "yield_by_population.svg"
-    _write_hapresult(hapresult)
-    _write_phenotype(phenotype)
-    _write_population(population)
+    _write_balanced_population_box_inputs(hapresult, phenotype, population)
 
     exit_code = main(
         [
@@ -579,7 +724,7 @@ def test_phenotype_cli_box_accepts_population_group(tmp_path: Path) -> None:
             "--population",
             str(population),
             "--min-hap-size",
-            "1",
+            "2",
             "--output",
             str(box_out),
             "--plot-format",
@@ -592,6 +737,7 @@ def test_phenotype_cli_box_accepts_population_group(tmp_path: Path) -> None:
     rendered_text = box_out.read_text(encoding="utf-8")
     assert "PopA" in rendered_text
     assert "PopB" in rendered_text
+    assert "*" in rendered_text
 
 
 def test_phenotype_cli_stat_accepts_population_group(tmp_path: Path) -> None:

@@ -123,6 +123,10 @@ per trait. When `--population/--pop-group` is provided, tests are run separately
 population group and the output includes a `population` column.
 Missing phenotype values (`NA`, `NaN`, `null`, `.`, or empty cells) are ignored per trait, and
 the `effective_n` column reports how many non-missing samples entered each test stratum.
+With `--population`, phenotype boxplots are grouped by population with haplotypes shown as
+side-by-side boxes. Star annotations are drawn inside the plot for within-population haplotype
+comparisons and between-population comparisons of the same haplotype; single-haplotype plots
+show only between-population comparisons.
 
 Population-stratified example inputs are bundled in `data/example_phenotype_haplotypes.tsv`,
 `data/example_phenotype.csv`, and `data/popgroup.txt`:
