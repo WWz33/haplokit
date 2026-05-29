@@ -57,9 +57,9 @@ def test_module_entrypoint_invokes_cli() -> None:
         text=True,
         check=False,
     )
-    assert completed.returncode != 0
-    stderr = completed.stderr
-    assert "a subcommand is required" in stderr or "usage:" in stderr
+    assert completed.returncode == 0
+    assert "usage: haplokit <command> [options]" in completed.stdout
+    assert "a subcommand is required" not in completed.stderr
 
 
 def test_cli_checks_packaged_backend_path() -> None:

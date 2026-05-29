@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -138,10 +139,11 @@ def build_parser() -> HaolokitArgumentParser:
     formatter = argparse.ArgumentDefaultsHelpFormatter
     parser = HaolokitArgumentParser(
         prog="haplokit",
+        usage="haplokit <command> [options]",
         description="CLI haplotype viewer with C++ backend, phenotype statistics, and Python plotting.",
         formatter_class=formatter,
     )
-    subparsers = parser.add_subparsers(dest="command")
+    subparsers = parser.add_subparsers(dest="command", metavar="<command>")
 
     view = subparsers.add_parser(
         "view",
@@ -824,6 +826,11 @@ def _run_phenotype(args) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
+    if argv is None:
+        argv = sys.argv[1:]
+    if not argv:
+        parser.print_help()
+        return 0
     args = parser.parse_args(argv)
     if args.command in {"phenotype", "pheno"}:
         return _run_phenotype(args)

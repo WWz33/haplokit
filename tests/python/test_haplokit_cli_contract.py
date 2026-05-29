@@ -18,6 +18,19 @@ from haplokit.cli import build_parser, main
 DATA_DIR = ROOT / "data"
 
 
+def test_top_level_help_uses_command_usage(capsys: pytest.CaptureFixture[str]) -> None:
+    parser = build_parser()
+    help_text = parser.format_help()
+
+    assert "usage: haplokit <command> [options]" in help_text
+    assert "{view,phenotype,pheno}" not in help_text
+
+    assert main([]) == 0
+    out = capsys.readouterr().out
+    assert "usage: haplokit <command> [options]" in out
+    assert "{view,phenotype,pheno}" not in out
+
+
 @pytest.fixture()
 def indexed_vcf(tmp_path: Path) -> Path:
     src = DATA_DIR / "var.vcf.gz"
