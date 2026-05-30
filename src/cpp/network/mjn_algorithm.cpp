@@ -1,5 +1,6 @@
 #include "mjn_algorithm.h"
 #include <algorithm>
+#include <functional>
 #include <limits>
 #include <map>
 
