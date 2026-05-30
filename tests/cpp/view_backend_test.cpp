@@ -70,6 +70,41 @@ int run() {
         return 1;
     }
 
+    haplokit::ViewOptions populated_options = strict_region;
+    populated_options.output_mode = haplokit::OutputMode::Both;
+    populated_options.sample_populations = haplokit::load_population_groups("data/popgroup.txt");
+    const auto populated = haplokit::build_view_result(region_data, populated_options);
+    if (populated.haplotypes.empty() || populated.haplotypes.front().populations.empty()) {
+        std::cerr << "expected population breakdown rows in populated summary\n";
+        return 1;
+    }
+    bool saw_wild_population = false;
+    for (const auto& population : populated.haplotypes.front().populations) {
+        if (population.population == "wild" && population.total == 12 && !population.frequency_label.empty()) {
+            saw_wild_population = true;
+        }
+    }
+    if (!saw_wild_population) {
+        std::cerr << "expected wild population total/frequency contract\n";
+        return 1;
+    }
+    bool saw_accession_population = false;
+    for (const auto& accession : populated.accessions) {
+        if (!accession.population.empty()) {
+            saw_accession_population = true;
+        }
+    }
+    if (!saw_accession_population) {
+        std::cerr << "expected detail accession population contract\n";
+        return 1;
+    }
+    const auto populated_payload = haplokit::serialize_view_result_json(populated);
+    if (populated_payload.find("\"populations\"") == std::string::npos ||
+        populated_payload.find("\"population\":\"wild\"") == std::string::npos) {
+        std::cerr << "serialized payload missing population contract fields\n";
+        return 1;
+    }
+
     haplokit::ViewOptions custom_labels = strict_region;
     custom_labels.hap_prefix = "H";
     custom_labels.hap_pad = 3;

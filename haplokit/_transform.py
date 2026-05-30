@@ -20,6 +20,10 @@ def read_popgroup(path: str | Path) -> dict[str, str]:
     return pop
 
 
+def _is_persisted_population_column(value: str) -> bool:
+    return value.endswith("_n") or value.endswith("_Accession")
+
+
 def _unique_alleles(rows: list[list[str]], var_end: int) -> list[str]:
     meta = {"POS", "ALLELE"}
     alleles: set[str] = set()
@@ -90,8 +94,9 @@ def transform_for_display(
 
     # ── Single-pass: extract CHR, POS, ALLELE row info ──
     chrom = ""
-    positions: list[str] = []
+    positions: list[int] = []
     total_ind = ""
+    var_end_col: int | None = None
     acc_col: int | None = None
     freq_col: int | None = None
     allele_row_done = False
@@ -106,15 +111,23 @@ def transform_for_display(
                 cs = cell.strip()
                 if cs.startswith("Individuals"):
                     total_ind = row[i + 1].strip() if i + 1 < len(row) else ""
+                    break
                 elif cs.isdigit():
-                    positions.append(cs)
+                    positions.append(int(cs))
         elif row[0] == "ALLELE" and not allele_row_done:
             for i, cell in enumerate(row):
-                if cell.strip() == "Accession":
+                value = cell.strip()
+                if value == "Accession":
                     acc_col = i
+                if i > 0 and var_end_col is None and (
+                    value in {"Accession", "freq"} or _is_persisted_population_column(value)
+                ):
+                    var_end_col = i
             if len(row) > 1 and row[-1].strip() == "freq":
                 freq_col = len(row) - 1
             allele_row_done = True
+    if var_end_col is None:
+        var_end_col = acc_col
 
     region_title = ""
     if chrom and positions:
@@ -141,14 +154,14 @@ def transform_for_display(
         if freq_col is not None and len(new_row) > freq_col:
             new_row = new_row[:freq_col]
 
-        if new_row[0] == "POS" and acc_col is not None:
-            new_row = new_row[:acc_col]
+        if new_row[0] == "POS" and var_end_col is not None:
+            new_row = new_row[:var_end_col]
 
-        if new_row[0] == "ALLELE" and acc_col is not None:
+        if new_row[0] == "ALLELE" and var_end_col is not None:
             pop_headers = pop_names + ["n/N"]
-            new_row = new_row[:acc_col] + pop_headers
+            new_row = new_row[:var_end_col] + pop_headers
 
-        elif new_row[0].startswith("H") and acc_col is not None:
+        elif new_row[0].startswith("H") and acc_col is not None and var_end_col is not None:
             target_col = acc_col
             if target_col < len(new_row):
                 raw = new_row[target_col].strip()
@@ -163,7 +176,7 @@ def transform_for_display(
 
                 acc_text = f"{count}/{total_ind}" if total_ind else str(count)
                 pop_cols.append(acc_text)
-                new_row = new_row[:target_col] + pop_cols
+                new_row = new_row[:var_end_col] + pop_cols
 
         new_rows.append(new_row)
 

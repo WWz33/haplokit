@@ -100,14 +100,30 @@ std::vector<std::string> display_states(const std::string& hap, const std::vecto
     return labels;
 }
 
-std::vector<HaplotypeDetailRow> build_sample_profiles(const RegionData& data, bool impute_ref) {
+std::string population_for_sample(const ViewOptions& options, const std::string& sample) {
+    const auto found = options.sample_populations.find(sample);
+    if (found == options.sample_populations.end()) {
+        return "";
+    }
+    return found->second;
+}
+
+std::map<std::string, int> population_totals(const ViewOptions& options) {
+    std::map<std::string, int> totals;
+    for (const auto& entry : options.sample_populations) {
+        totals[entry.second] += 1;
+    }
+    return totals;
+}
+
+std::vector<HaplotypeDetailRow> build_sample_profiles(const RegionData& data, const ViewOptions& options) {
     std::vector<HaplotypeDetailRow> rows;
     for (std::size_t sample_idx = 0; sample_idx < data.samples.size(); ++sample_idx) {
         std::vector<std::string> states;
         states.reserve(data.variants.size());
         bool skip = false;
         for (const auto& variant : data.variants) {
-            const auto normalized = normalize_call(variant.genotypes[sample_idx], impute_ref);
+            const auto normalized = normalize_call(variant.genotypes[sample_idx], options.impute);
             if (!normalized.has_value()) {
                 skip = true;
                 break;
@@ -117,16 +133,17 @@ std::vector<HaplotypeDetailRow> build_sample_profiles(const RegionData& data, bo
         if (skip) {
             continue;
         }
-        rows.push_back(HaplotypeDetailRow{data.samples[sample_idx], join_states(states)});
+        const auto& sample = data.samples[sample_idx];
+        rows.push_back(HaplotypeDetailRow{sample, join_states(states), population_for_sample(options, sample)});
     }
     return rows;
 }
 
 std::vector<HaplotypeDetailRow> build_approx_accessions(
     const RegionData& data,
-    bool impute_ref,
+    const ViewOptions& options,
     double max_diff) {
-    auto raw_profiles = build_sample_profiles(data, impute_ref);
+    auto raw_profiles = build_sample_profiles(data, options);
 
     std::vector<HaplotypeDetailRow> rows;
     std::vector<std::vector<std::string>> representatives;
@@ -167,7 +184,7 @@ std::vector<HaplotypeDetailRow> build_approx_accessions(
             representatives.push_back(states);
             labels.push_back(*assigned);
         }
-        rows.push_back(HaplotypeDetailRow{sample_name, *assigned});
+        rows.push_back(HaplotypeDetailRow{sample_name, *assigned, profile.population});
     }
     return rows;
 }
@@ -179,10 +196,15 @@ std::vector<HaplotypeSummaryRow> summarize_accessions(
     int total) {
     std::map<std::string, int> counts;
     std::map<std::string, std::vector<std::string>> samples_by_hap;
+    std::map<std::string, std::map<std::string, std::vector<std::string>>> samples_by_hap_population;
     for (const auto& accession : accessions) {
         counts[accession.hap] += 1;
         samples_by_hap[accession.hap].push_back(accession.sample);
+        if (!accession.population.empty()) {
+            samples_by_hap_population[accession.hap][accession.population].push_back(accession.sample);
+        }
     }
+    const auto totals_by_population = population_totals(options);
 
     std::vector<HaplotypeSummaryRow> rows;
     rows.reserve(counts.size());
@@ -195,6 +217,19 @@ std::vector<HaplotypeSummaryRow> summarize_accessions(
         row.total = total;
         row.frequency = total > 0 ? static_cast<double>(entry.second) / static_cast<double>(total) : 0.0;
         row.frequency_label = std::to_string(entry.second) + "/" + std::to_string(total);
+        for (const auto& population_total : totals_by_population) {
+            PopulationBreakdownRow population_row;
+            population_row.population = population_total.first;
+            population_row.total = population_total.second;
+            population_row.samples = samples_by_hap_population[entry.first][population_total.first];
+            population_row.count = static_cast<int>(population_row.samples.size());
+            population_row.frequency = population_row.total > 0
+                ? static_cast<double>(population_row.count) / static_cast<double>(population_row.total)
+                : 0.0;
+            population_row.frequency_label =
+                std::to_string(population_row.count) + "/" + std::to_string(population_row.total);
+            row.populations.push_back(std::move(population_row));
+        }
         rows.push_back(row);
     }
     std::sort(rows.begin(), rows.end(), [](const auto& left, const auto& right) {
@@ -242,9 +277,9 @@ ViewResult build_view_result(const RegionData& data, const ViewOptions& options)
     std::vector<HaplotypeDetailRow> accessions;
     if (!data.variants.empty()) {
         if (options.max_diff.has_value()) {
-            accessions = build_approx_accessions(data, options.impute, *options.max_diff);
+            accessions = build_approx_accessions(data, options, *options.max_diff);
         } else {
-            accessions = build_sample_profiles(data, options.impute);
+            accessions = build_sample_profiles(data, options);
         }
     }
 
@@ -285,6 +320,17 @@ std::string serialize_view_result_json(const ViewResult& result) {
     if (result.output_mode == "summary" || result.output_mode == "both") {
         json haps = json::array();
         for (const auto& h : result.haplotypes) {
+            json populations = json::array();
+            for (const auto& population : h.populations) {
+                populations.push_back({
+                    {"count", population.count},
+                    {"frequency", population.frequency},
+                    {"frequency_label", population.frequency_label},
+                    {"population", population.population},
+                    {"samples", population.samples},
+                    {"total", population.total},
+                });
+            }
             haps.push_back({
                 {"count", h.count},
                 {"frequency", h.frequency},
@@ -292,6 +338,7 @@ std::string serialize_view_result_json(const ViewResult& result) {
                 {"hap", h.hap},
                 {"id", h.id},
                 {"pattern", h.hap},
+                {"populations", populations},
                 {"samples", h.samples},
                 {"states", h.states},
                 {"total", h.total},
@@ -303,7 +350,11 @@ std::string serialize_view_result_json(const ViewResult& result) {
     if (result.output_mode == "detail" || result.output_mode == "both") {
         json accs = json::array();
         for (const auto& a : result.accessions) {
-            accs.push_back({{"hap", a.hap}, {"sample", a.sample}});
+            json accession = {{"hap", a.hap}, {"sample", a.sample}};
+            if (!a.population.empty()) {
+                accession["population"] = a.population;
+            }
+            accs.push_back(accession);
         }
         j["accessions"] = accs;
     }
@@ -346,6 +397,35 @@ std::vector<std::string> load_sample_list(const std::string& path) {
         samples.push_back(line);
     }
     return samples;
+}
+
+std::map<std::string, std::string> load_population_groups(const std::string& path) {
+    std::ifstream handle(path);
+    if (!handle) {
+        throw std::runtime_error("failed to open population group file: " + path);
+    }
+
+    std::map<std::string, std::string> groups;
+    std::string line;
+    while (std::getline(handle, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        if (line.empty()) {
+            continue;
+        }
+
+        const auto separator = line.find('\t');
+        if (separator == std::string::npos) {
+            continue;
+        }
+        const auto sample = line.substr(0, separator);
+        const auto population = line.substr(separator + 1);
+        if (!sample.empty() && !population.empty()) {
+            groups[sample] = population;
+        }
+    }
+    return groups;
 }
 
 }  // namespace haplokit

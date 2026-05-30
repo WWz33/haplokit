@@ -257,8 +257,8 @@ def test_main_default_tsv_writes_hapresult_and_hap_summary(tmp_path: Path, index
     exit_code = main(["view", str(indexed_vcf), "-r", "scaffold_1:4300-5000", "--output-file", str(out_dir)])
 
     assert exit_code == 0
-    hapresult = out_dir / "hapresult.tsv"
-    hap_summary = out_dir / "hap_summary.tsv"
+    hapresult = out_dir / "hapresult_scaffold_1_4300_5000.tsv"
+    hap_summary = out_dir / "hap_summary_scaffold_1_4300_5000.tsv"
     assert hapresult.exists()
     assert hap_summary.exists()
 
@@ -275,6 +275,37 @@ def test_main_default_tsv_writes_hapresult_and_hap_summary(tmp_path: Path, index
     assert result_rows[3][-1] == "Accession"
     assert result_rows[4][0].startswith("Hap")
     assert "Hap01" in {row[0] for row in result_rows[4:]}
+
+
+def test_main_population_tsv_persists_population_columns(tmp_path: Path, indexed_vcf: Path) -> None:
+    out_dir = tmp_path / "out"
+    exit_code = main(
+        [
+            "view",
+            str(indexed_vcf),
+            "-r",
+            "scaffold_1:4300-5000",
+            "--population",
+            str(DATA_DIR / "popgroup.txt"),
+            "--output-file",
+            str(out_dir),
+        ]
+    )
+
+    assert exit_code == 0
+    summary_rows = _read_tsv(out_dir / "hap_summary_scaffold_1_4300_5000.tsv")
+    summary_header = summary_rows[3]
+    assert summary_header[-2:] == ["Accession", "freq"]
+    assert "wild_n" in summary_header
+    assert "wild_Accession" in summary_header
+    assert "landrace_n" in summary_header
+    assert "cultivar_Accession" in summary_header
+    assert "/" in summary_rows[4][summary_header.index("wild_n")]
+
+    result_rows = _read_tsv(out_dir / "hapresult_scaffold_1_4300_5000.tsv")
+    result_header = result_rows[3]
+    assert result_header[-2:] == ["Population", "Accession"]
+    assert result_rows[4][result_header.index("Population")] in {"wild", "landrace", "cultivar"}
 
 
 def test_main_bed_writes_selector_scoped_tsv_names(tmp_path: Path, indexed_vcf: Path) -> None:

@@ -658,6 +658,70 @@ def test_plot_hap_phenotype_box_filters_records_per_population_panel(tmp_path: P
     assert rendered_text.count("Hap04") == 1
 
 
+def test_haplotype_box_emits_default_pairwise_annotations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    records = (
+        PhenotypeRecord("S1", "Hap01", "yield", 1.0),
+        PhenotypeRecord("S2", "Hap01", "yield", 1.2),
+        PhenotypeRecord("S3", "Hap02", "yield", 2.0),
+        PhenotypeRecord("S4", "Hap02", "yield", 2.2),
+        PhenotypeRecord("S5", "Hap03", "yield", 3.0),
+        PhenotypeRecord("S6", "Hap03", "yield", 3.2),
+    )
+    captured: list[tuple[float, float, str]] = []
+
+    def capture_annotations(_ax, annotations):
+        captured.extend(annotations)
+
+    monkeypatch.setattr(phenotype_plot, "_draw_stat_annotations_inside", capture_annotations)
+
+    plot_hap_phenotype_box(
+        records,
+        trait="yield",
+        output_path=tmp_path / "hap_pairwise.svg",
+        min_hap_size=2,
+        fmt="svg",
+    )
+
+    distances = sorted(round(abs(x2 - x1), 2) for x1, x2, _ in captured)
+    assert len(captured) == 3
+    assert distances == [1.0, 1.0, 2.0]
+
+
+def test_haplotype_box_explicit_comparisons_filter_annotations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    records = (
+        PhenotypeRecord("S1", "Hap01", "yield", 1.0),
+        PhenotypeRecord("S2", "Hap01", "yield", 1.2),
+        PhenotypeRecord("S3", "Hap02", "yield", 2.0),
+        PhenotypeRecord("S4", "Hap02", "yield", 2.2),
+        PhenotypeRecord("S5", "Hap03", "yield", 3.0),
+        PhenotypeRecord("S6", "Hap03", "yield", 3.2),
+    )
+    captured: list[tuple[float, float, str]] = []
+
+    def capture_annotations(_ax, annotations):
+        captured.extend(annotations)
+
+    monkeypatch.setattr(phenotype_plot, "_draw_stat_annotations_inside", capture_annotations)
+
+    plot_hap_phenotype_box(
+        records,
+        trait="yield",
+        output_path=tmp_path / "hap_filtered.svg",
+        min_hap_size=2,
+        comparisons=[("Hap01", "Hap03")],
+        fmt="svg",
+    )
+
+    assert len(captured) == 1
+    assert round(abs(captured[0][1] - captured[0][0]), 2) == 2.0
+
+
 def test_population_grouped_box_emits_within_and_between_annotations(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

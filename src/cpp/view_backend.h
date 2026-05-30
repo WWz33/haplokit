@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,16 @@ struct ViewOptions {
     OutputMode output_mode = OutputMode::Summary;
     std::string hap_prefix = "Hap";
     int hap_pad = 2;
+    std::map<std::string, std::string> sample_populations;
+};
+
+struct PopulationBreakdownRow {
+    std::string population;
+    std::vector<std::string> samples;
+    int count = 0;
+    int total = 0;
+    double frequency = 0.0;
+    std::string frequency_label;
 };
 
 struct HaplotypeSummaryRow {
@@ -34,6 +45,7 @@ struct HaplotypeSummaryRow {
     std::string hap;
     std::vector<std::string> states;
     std::vector<std::string> samples;
+    std::vector<PopulationBreakdownRow> populations;
     int count = 0;
     int total = 0;
     double frequency = 0.0;
@@ -43,6 +55,7 @@ struct HaplotypeSummaryRow {
 struct HaplotypeDetailRow {
     std::string sample;
     std::string hap;
+    std::string population;
 };
 
 struct SiteRow {
@@ -71,5 +84,6 @@ struct ViewResult {
 ViewResult build_view_result(const RegionData& data, const ViewOptions& options);
 std::string serialize_view_result_json(const ViewResult& result);
 std::vector<std::string> load_sample_list(const std::string& path);
+std::map<std::string, std::string> load_population_groups(const std::string& path);
 
 }  // namespace haplokit

@@ -8,6 +8,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from haplokit.plot import plot_hap_distribution, plot_hap_table, read_hap_summary_tsv
+from haplokit._transform import transform_for_display
 
 
 def test_haplokit_python_surface_does_not_reference_r_runtime() -> None:
@@ -43,6 +44,27 @@ def test_python_plotter_renders_pdf_and_svg_from_hap_summary_tsv(tmp_path: Path)
     assert pdf_rendered.suffix == ".pdf"
     assert svg_rendered.exists()
     assert svg_rendered.suffix == ".svg"
+
+
+def test_transform_ignores_persisted_population_columns_for_display() -> None:
+    rows = [
+        ["CHR", "scaffold_1", "scaffold_1", "Haplotypes: ", "2"],
+        ["POS", "4300", "4345", "Individuals: ", "3"],
+        ["INFO", ".", ".", "Variants: ", "2"],
+        ["ALLELE", "A/T", "G/C", "PopA_n", "PopA_Accession", "PopB_n", "PopB_Accession", "Accession", "freq"],
+        ["Hap01", "A", "C", "999/999", "ignored", "999/999", "ignored", "S1;S3", "2"],
+        ["Hap02", "T", "G", "999/999", "ignored", "999/999", "ignored", "S2", "1"],
+    ]
+
+    transformed, title = transform_for_display(rows, {"S1": "PopA", "S2": "PopA", "S3": "PopB"})
+
+    assert title == "scaffold_1:4300-4345"
+    assert transformed == [
+        ["POS", "4300", "4345"],
+        ["ALLELE", "A/T", "G/C", "PopA", "PopB", "n/N"],
+        ["Hap01", "A", "C", "1/2", "1/1", "2/3"],
+        ["Hap02", "T", "G", "1/2", "0/1", "1/3"],
+    ]
 
 
 def test_distribution_plot_accepts_map_facecolor(tmp_path: Path) -> None:

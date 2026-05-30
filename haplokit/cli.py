@@ -14,7 +14,6 @@ from haplokit.summary_contract import (
     hap_samples,
     hap_states,
     hap_summary_states,
-    with_population_breakdown,
 )
 
 
@@ -350,6 +349,8 @@ def _run_cpp_view(selector: Selector, args) -> dict[str, object]:
 def _append_common_args(cmd: list[str], args) -> None:
     if args.samples_file:
         cmd.extend(["--samples-file", str(args.samples_file)])
+    if args.population_file:
+        cmd.extend(["--population-file", str(args.population_file)])
     if args.impute:
         cmd.append("--impute")
     if args.max_diff is not None:
@@ -479,8 +480,8 @@ def _tsv_paths_for_selector(args, selector: Selector, selector_index: int, selec
             summary_name = f"{name_prefix}.hap_summary.tsv"
             result_name = f"{name_prefix}.hapresult.tsv"
         else:
-            summary_name = "hap_summary.tsv"
-            result_name = "hapresult.tsv"
+            summary_name = f"hap_summary_{region_slug}.tsv"
+            result_name = f"hapresult_{region_slug}.tsv"
     else:
         if name_prefix:
             summary_name = f"{name_prefix}.hap_summary_{region_slug}.tsv"
@@ -496,6 +497,73 @@ def _tsv_paths_for_selector(args, selector: Selector, selector_index: int, selec
     if selector_count > 1 and result_path.exists():
         result_path = output_dir / f"{result_path.stem}_{selector_index + 1:03d}{result_path.suffix}"
     return summary_path, result_path
+
+
+def _population_names(summary_row: dict[str, object]) -> list[str]:
+    names: list[str] = []
+    seen: set[str] = set()
+    for item in summary_row.get("haplotypes", []):
+        if not isinstance(item, dict):
+            continue
+        populations = item.get("populations", [])
+        if not isinstance(populations, list):
+            continue
+        for population in populations:
+            if not isinstance(population, dict):
+                continue
+            name = str(population.get("population", "")).strip()
+            if name and name not in seen:
+                seen.add(name)
+                names.append(name)
+    return names
+
+
+def _population_totals(summary_row: dict[str, object]) -> dict[str, int]:
+    totals: dict[str, int] = {}
+    for item in summary_row.get("haplotypes", []):
+        if not isinstance(item, dict):
+            continue
+        populations = item.get("populations", [])
+        if not isinstance(populations, list):
+            continue
+        for population in populations:
+            if not isinstance(population, dict):
+                continue
+            name = str(population.get("population", "")).strip()
+            if not name:
+                continue
+            total = population.get("total")
+            if isinstance(total, int):
+                totals[name] = total
+    return totals
+
+
+def _population_rows(item: dict[str, object]) -> dict[str, dict[str, object]]:
+    rows: dict[str, dict[str, object]] = {}
+    populations = item.get("populations", [])
+    if not isinstance(populations, list):
+        return rows
+    for population in populations:
+        if not isinstance(population, dict):
+            continue
+        name = str(population.get("population", "")).strip()
+        if name:
+            rows[name] = population
+    return rows
+
+
+def _detail_samples_for_population(
+    item: dict[str, object],
+    detail_row: dict[str, object],
+    population_name: str,
+) -> list[str]:
+    return [
+        str(accession["sample"])
+        for accession in detail_row.get("accessions", [])
+        if isinstance(accession, dict)
+        and accession.get("hap") == item.get("hap")
+        and str(accession.get("population", "")) == population_name
+    ]
 
 
 def _info_cells(site_count: int, annotation: dict[str, object] | None) -> list[str]:
@@ -519,17 +587,39 @@ def _write_selector_summary_txt(
     site_positions = [str(site["pos"]) for site in sites]
     site_alleles = [str(site["allele"]) for site in sites]
     info_cells = _info_cells(len(sites), annotation if isinstance(annotation, dict) else None)
+    population_names = _population_names(summary_row)
+    population_totals = _population_totals(summary_row)
+    population_headers = [
+        column
+        for population_name in population_names
+        for column in (f"{population_name}_n", f"{population_name}_Accession")
+    ]
     lines: list[str] = []
     lines.append("\t".join(["CHR", *site_chroms, "Haplotypes: ", str(summary_row["haplotype_count"])]))
     lines.append("\t".join(["POS", *site_positions, "Individuals: ", str(summary_row["sample_count"])]))
     lines.append("\t".join(["INFO", *info_cells, "Variants: ", str(summary_row["variant_count"])]))
-    lines.append("\t".join(["ALLELE", *site_alleles, "Accession", "freq"]))
+    lines.append("\t".join(["ALLELE", *site_alleles, *population_headers, "Accession", "freq"]))
 
     for index, item in enumerate(summary_row.get("haplotypes", []), start=1):
+        if not isinstance(item, dict):
+            continue
         hap_label = str(item.get("id", f"Hap{index:02d}"))
         states = hap_summary_states(item, sites, str(summary_row["grouping_method"]))
+        populations = _population_rows(item)
+        population_cells: list[str] = []
+        for population_name in population_names:
+            population = populations.get(population_name, {})
+            samples = population.get("samples")
+            if isinstance(samples, list):
+                population_samples = [str(sample) for sample in samples]
+            else:
+                population_samples = _detail_samples_for_population(item, detail_row, population_name)
+            frequency_label = str(
+                population.get("frequency_label", f"0/{population_totals.get(population_name, 0)}")
+            )
+            population_cells.extend([frequency_label, ";".join(population_samples)])
         accessions = ";".join(hap_samples(item, detail_row))
-        lines.append("\t".join([hap_label, *states, accessions, str(item["count"])]))
+        lines.append("\t".join([hap_label, *states, *population_cells, accessions, str(item["count"])]))
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -545,14 +635,20 @@ def _write_selector_result_txt(
     site_positions = [str(site["pos"]) for site in sites]
     site_alleles = [str(site["allele"]) for site in sites]
     info_cells = _info_cells(len(sites), annotation if isinstance(annotation, dict) else None)
+    accessions = [item for item in detail_row.get("accessions", []) if isinstance(item, dict)]
+    include_population = any(str(item.get("population", "")).strip() for item in accessions)
     lines: list[str] = []
     lines.append("\t".join(["CHR", *site_chroms, "Haplotypes: ", str(summary_row["haplotype_count"])]))
     lines.append("\t".join(["POS", *site_positions, "Individuals: ", str(summary_row["sample_count"])]))
     lines.append("\t".join(["INFO", *info_cells, "Variants: ", str(summary_row["variant_count"])]))
-    lines.append("\t".join(["ALLELE", *site_alleles, "Accession"]))
+    result_header = ["ALLELE", *site_alleles]
+    if include_population:
+        result_header.append("Population")
+    result_header.append("Accession")
+    lines.append("\t".join(result_header))
 
     hap_label_map = build_hap_label_map(summary_row)
-    for item in detail_row.get("accessions", []):
+    for item in accessions:
         hap_label = hap_label_map.get(item["hap"], item["hap"])
         summary_item = next(
             (hap for hap in summary_row.get("haplotypes", []) if hap.get("hap") == item["hap"]),
@@ -563,7 +659,11 @@ def _write_selector_result_txt(
             if isinstance(summary_item, dict)
             else hap_states(item["hap"], sites, str(summary_row["grouping_method"]))
         )
-        lines.append("\t".join([hap_label, *states, str(item["sample"])]))
+        result_cells = [hap_label, *states]
+        if include_population:
+            result_cells.append(str(item.get("population", "")))
+        result_cells.append(str(item["sample"]))
+        lines.append("\t".join(result_cells))
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -626,11 +726,11 @@ def _compose_row(
         row["plot_backend"] = "python"
 
     if args.output_mode == "summary":
-        row["haplotypes"] = with_population_breakdown(list(backend_row["haplotypes"]), args.population_file)
+        row["haplotypes"] = backend_row["haplotypes"]
     elif args.output_mode == "detail":
         row["accessions"] = backend_row["accessions"]
     else:  # both
-        row["haplotypes"] = with_population_breakdown(list(backend_row.get("haplotypes", [])), args.population_file)
+        row["haplotypes"] = backend_row.get("haplotypes", [])
         row["accessions"] = backend_row.get("accessions", [])
 
     if "annotation" in backend_row:

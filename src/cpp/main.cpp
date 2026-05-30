@@ -67,7 +67,7 @@ ParsedViewJsonCommand parse_view_json_command(int argc, char** argv) {
     if (argc < 4) {
         throw std::runtime_error(
             "usage: haplokit_cpp view-json <vcf> <region> [--by region|site] [--samples-file path] "
-            "[--impute] [--output summary|detail] [--max-diff x]");
+            "[--impute] [--output summary|detail] [--max-diff x] [--population-file path]");
     }
 
     ParsedViewJsonCommand parsed;
@@ -95,6 +95,13 @@ ParsedViewJsonCommand parse_view_json_command(int argc, char** argv) {
                 throw std::runtime_error("--samples-file requires a path");
             }
             parsed.samples = haplokit::load_sample_list(argv[++idx]);
+            continue;
+        }
+        if (arg == "--population-file") {
+            if (idx + 1 >= argc) {
+                throw std::runtime_error("--population-file requires a path");
+            }
+            parsed.options.sample_populations = haplokit::load_population_groups(argv[++idx]);
             continue;
         }
         if (arg == "--impute") {
@@ -172,6 +179,13 @@ haplokit::ViewOptions parse_common_view_options(
                 throw std::runtime_error("--samples-file requires a path");
             }
             *samples = haplokit::load_sample_list(argv[++idx]);
+            continue;
+        }
+        if (arg == "--population-file") {
+            if (idx + 1 >= argc) {
+                throw std::runtime_error("--population-file requires a path");
+            }
+            options.sample_populations = haplokit::load_population_groups(argv[++idx]);
             continue;
         }
         if (arg == "--impute") {
@@ -294,8 +308,8 @@ int run_view_json(int argc, char** argv) {
 int run_view_bed_jsonl(int argc, char** argv) {
     if (argc < 4) {
         throw std::runtime_error(
-            "usage: haplokit_cpp view-bed-jsonl <vcf> <regions.bed> [--samples-file path] [--impute] "
-            "[--output summary|detail] [--max-diff x] [--gff3 path]");
+            "usage: haplokit_cpp view-bed-jsonl <vcf> <regions.bed> [--samples-file path] "
+            "[--population-file path] [--impute] [--output summary|detail] [--max-diff x] [--gff3 path]");
     }
 
     const std::string input_vcf = argv[2];

@@ -129,8 +129,7 @@ def _plot_haplotype_box(
     _style_box_axes(ax)
     ax.tick_params(axis="x", rotation=30 if max(len(label) for label in labels) > 7 else 0)
 
-    if comparisons:
-        _annotate_haplotype_comparisons(ax, records, trait, labels, comparisons, min_hap_size, method)
+    _annotate_haplotype_comparisons(ax, records, trait, labels, comparisons, min_hap_size, method)
     return fig
 
 
@@ -324,7 +323,7 @@ def _annotate_haplotype_comparisons(
     records: Sequence[PhenotypeRecord],
     trait: str,
     labels: Sequence[str],
-    comparisons: Sequence[tuple[str, str]],
+    comparisons: Sequence[tuple[str, str]] | None,
     min_hap_size: int,
     method: str,
 ) -> None:
@@ -333,7 +332,12 @@ def _annotate_haplotype_comparisons(
     label_to_x = {label: idx for idx, label in enumerate(labels, start=1)}
     annotations: list[tuple[float, float, str]] = []
 
-    for group1, group2 in comparisons:
+    if comparisons is None:
+        selected_comparisons = [(str(row["group1"]), str(row["group2"])) for row in rows]
+    else:
+        selected_comparisons = list(comparisons)
+
+    for group1, group2 in selected_comparisons:
         if group1 not in label_to_x or group2 not in label_to_x:
             continue
         row = row_map.get(frozenset((group1, group2)))

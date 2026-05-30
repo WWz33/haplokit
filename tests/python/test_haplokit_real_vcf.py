@@ -65,8 +65,8 @@ def test_region_mode_writes_hapresult_and_hap_summary_tsv(tmp_path: Path, indexe
     exit_code = main(["view", str(indexed_vcf), "-r", "scaffold_1:4300-5000", "--output-file", str(out_dir)])
 
     assert exit_code == 0
-    hapresult = out_dir / "hapresult.tsv"
-    hap_summary = out_dir / "hap_summary.tsv"
+    hapresult = out_dir / "hapresult_scaffold_1_4300_5000.tsv"
+    hap_summary = out_dir / "hap_summary_scaffold_1_4300_5000.tsv"
     assert hapresult.exists()
     assert hap_summary.exists()
 
@@ -184,7 +184,7 @@ def test_site_mode_with_r_chr_pos_behaves_as_one_site(tmp_path: Path, indexed_vc
     exit_code = main(["view", str(indexed_vcf), "-r", "scaffold_1:4300", "--output-file", str(out_dir)])
 
     assert exit_code == 0
-    meta = _summary_meta(out_dir / "hap_summary.tsv")
+    meta = _summary_meta(out_dir / "hap_summary_scaffold_1_4300_4300.tsv")
     assert meta["variants"] == 1
     assert len(meta["site_positions"]) == 1
     assert meta["site_positions"][0] == "4300"
@@ -209,7 +209,7 @@ def test_samples_file_limits_individual_count_in_tsv(tmp_path: Path, indexed_vcf
     )
 
     assert exit_code == 0
-    meta = _summary_meta(out_dir / "hap_summary.tsv")
+    meta = _summary_meta(out_dir / "hap_summary_scaffold_1_4300_5000.tsv")
     assert meta["individuals"] == 3
 
 
