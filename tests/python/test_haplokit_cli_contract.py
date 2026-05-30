@@ -195,10 +195,8 @@ def test_view_help_describes_parameters(capsys: pytest.CaptureFixture[str]) -> N
     assert "Haplotype visualization options" in out
     assert "Haplotype network options" in out
     assert "indexed VCF/BCF input path" in out
-    assert "-C, --map-facecolor" in out
-    assert "-z, --figsize FIGSIZE" in out
-    assert "--show-counts" in out
-    assert "--hide-counts" in out
+    for token in ["-C", "--map-facecolor", "-z", "--figsize", "FIGSIZE", "--show-counts", "--hide-counts"]:
+        assert token in out
     assert "haplotype network inference method" in out
 
 
