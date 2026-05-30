@@ -13,6 +13,16 @@ function(haplokit_configure_htslib)
             )
         endif()
 
+        set(_haplokit_htscodecs_version_h "${HAPLOKIT_VENDORED_HTSLIB_DIR}/htscodecs/htscodecs/version.h")
+        if(NOT EXISTS "${_haplokit_htscodecs_version_h}")
+            file(READ "${HAPLOKIT_VENDORED_HTSLIB_DIR}/htscodecs/configure.ac" _haplokit_htscodecs_configure_ac)
+            string(REGEX MATCH "AC_INIT\\(htscodecs, *([0-9]+\\.[0-9]+\\.[0-9]+)\\)" _haplokit_htscodecs_version_match "${_haplokit_htscodecs_configure_ac}")
+            if(NOT CMAKE_MATCH_1)
+                message(FATAL_ERROR "Unable to determine vendored htscodecs version from configure.ac")
+            endif()
+            file(WRITE "${_haplokit_htscodecs_version_h}" "#define HTSCODECS_VERSION_TEXT \"${CMAKE_MATCH_1}\"\n")
+        endif()
+
         add_custom_command(
             OUTPUT "${HAPLOKIT_VENDORED_HTSLIB_DIR}/libhts.a"
             COMMAND "${CMAKE_MAKE_PROGRAM}" -C "${HAPLOKIT_VENDORED_HTSLIB_DIR}" lib-static -j1
