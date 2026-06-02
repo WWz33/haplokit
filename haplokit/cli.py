@@ -215,7 +215,7 @@ def build_parser() -> HaolokitArgumentParser:
     phenotype_plot.add_argument("-F", "--plot-format", choices=["png", "pdf", "svg", "tiff"], default=None, help="boxplot format; defaults to --box-output suffix")
     phenotype_plot.add_argument("-z", "--figsize", type=_figsize_value, help="boxplot figure size as WIDTH,HEIGHT in inches")
     phenotype_plot.add_argument("-T", "--title", help="boxplot title")
-    phenotype_plot.add_argument("-c", "--comparison", action="append", type=_comparison_value, default=[], help="haplotype pair to annotate in --plot-box, e.g. Hap01,Hap02; repeat for multiple pairs")
+    phenotype_plot.add_argument("-c", "--comparison", action="append", type=_comparison_value, default=None, help="haplotype pair to annotate in --plot-box, e.g. Hap01,Hap02; repeat for multiple pairs")
     phenotype_parse.add_argument("-d", "--delimiter", choices=["auto", "tab", "comma"], default="auto", dest="hap_delimiter", help="delimiter for hapresult/sample-haplotype input")
     phenotype_parse.add_argument("-D", "--phenotype-delimiter", choices=["auto", "tab", "comma"], default="auto", help="delimiter for phenotype input")
     phenotype_parse.add_argument("-G", "--population-delimiter", choices=["auto", "tab", "comma"], default="auto", help="delimiter for population input")

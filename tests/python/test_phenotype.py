@@ -513,6 +513,7 @@ def test_phenotype_cli_accepts_short_options(capsys: pytest.CaptureFixture[str])
     assert stat_args.hap_delimiter == "tab"
     assert stat_args.phenotype_delimiter == "comma"
     assert stat_args.population_delimiter == "tab"
+    assert stat_args.comparison is None
 
     box_args = parser.parse_args(
         [
