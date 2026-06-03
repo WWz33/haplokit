@@ -1,12 +1,25 @@
 # haplokit
 
-面向 CLI 的单倍型查看工具，提供 C++ 后端加速、表型统计和 Python 绘图。
+面向 indexed VCF/BCF 的命令行单倍型分析工具，使用 C++ 处理数据平面，使用 Python 完成统计分析与绘图。
 
 <!-- README-I18N:START -->
 
-[English](./README.md) | **汉语**
+[English](./README.md) | **中文**
 
 <!-- README-I18N:END -->
+
+`haplokit` 用于群体基因组学中的基因或区间级单倍型分析。它可以从 indexed VCF/BCF 中提取单倍型，结合 GFF3/GTF 注释基因结构，统计群体组成，绘制地理分布图和单倍型网络，并对单倍型分组之间的表型差异进行统计检验。
+
+## 功能概览
+
+| 模块 | 用途 | 典型输出 |
+| --- | --- | --- |
+| `view` | 从区间、单个位点、基因 ID、基因列表或 BED 文件提取单倍型 | `hapresult.tsv`, `hap_summary.tsv` |
+| 基因注释 | 解析 gene selector，并为变异位置添加基因结构上下文 | `gff_ann_summary.tsv`, 注释版单倍型表图 |
+| 群体统计 | 按群体统计每个单倍型的样本数 | 表格和图中的 population columns |
+| 地理分布图 | 在采样地点绘制单倍型组成 | 带饼图和样本数比例尺的地图 |
+| 单倍型网络 | 使用 MSN、TCS 或 MJN 构建 PopART 风格网络 | 带群体饼图和突变刻度的 network figure |
+| `phenotype` | 连接单倍型与数值表型，输出检验结果和箱线图 | `phenotype_stats.tsv`, 表型 summary TSV, boxplot |
 
 ## 安装
 
@@ -14,25 +27,49 @@
 pip install haplokit
 ```
 
-> 源码构建需要 Linux/WSL、Python 3.10+、C++17 工具链、CMake 3.22+ — 见[贡献开发](#贡献开发)。
+源码构建需要 Linux/WSL、Python 3.10+、C++17 编译器、CMake 3.22+、`make`，以及 vendored htslib 构建所需的本地库。
 
-从 git clone 的源码目录安装：
+Conda/mamba 示例：
+
+```bash
+mamba install -c conda-forge compilers make cmake libcurl zlib bzip2 xz
+python -m pip install --no-cache-dir haplokit
+```
+
+Ubuntu/Debian 示例：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y build-essential make cmake zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
+python -m pip install --no-cache-dir haplokit
+```
+
+从源码目录安装：
 
 ```bash
 pip install .
 ```
 
-开发模式安装也会通过 PEP 660 editable wheel hook 把 C++ 后端编译到源码树内：
+开发模式安装：
 
 ```bash
 pip install -e .
 ```
 
-如果后端编译在其他位置，可以显式指定：
+如果 C++ 后端构建在其他位置，可以显式指定：
 
 ```bash
 export HAPLOKIT_CPP_BIN=/path/to/haplokit_cpp
 ```
+
+常见链接错误与依赖对应关系：
+
+| 错误 | 需要安装 |
+| --- | --- |
+| `cannot find -lcurl` | `libcurl` / `libcurl4-openssl-dev` |
+| `cannot find -lbz2` | `bzip2` / `libbz2-dev` |
+| `cannot find -llzma` | `xz` / `liblzma-dev` |
+| `cannot find -lz` | `zlib` / `zlib1g-dev` |
 
 ## 快速开始
 
@@ -40,140 +77,99 @@ export HAPLOKIT_CPP_BIN=/path/to/haplokit_cpp
 haplokit view data/var.sorted.vcf.gz -r scaffold_1:4300-5000 --output-file out
 ```
 
-输出：
+主要输出：
 
-- `out/hapresult.tsv` — 逐样本单倍型详情
-- `out/hap_summary.tsv` — 单倍型计数汇总
+| 文件 | 含义 |
+| --- | --- |
+| `out/hapresult.tsv` | 单倍型等位基因模式与样本列表 |
+| `out/hap_summary.tsv` | 单倍型计数和频率 |
 
-## 使用场景
+## 单倍型分析流程
 
-### 1. 区域查询 — 严格精确分组
-
-识别基因组区域内的所有不同单倍型。
+### 区间或单个位点单倍型识别
 
 ```bash
 haplokit view in.vcf.gz -r chr1:1000-2000 --output-file out
-```
-
-在 `out/` 中生成 `hapresult.tsv` + `hap_summary.tsv`。每行单倍型展示精确等位基因模式；含杂合或缺失呼叫的样本被排除。
-
-### 2. 单位点查询
-
-分析单个变异位点的单倍型。
-
-```bash
 haplokit view in.vcf.gz -r chr1:1450 --output-file out_site
 ```
 
-`--by` 对 `chr:pos` 选择器自动推断为 `site`。
+区间 selector 会按整个区域内的等位基因模式分组。单点 selector 会自动进入 site mode。严格区间模式下，带杂合或缺失调用的样本会被排除；如需保留缺失样本，可以使用 `--impute`。
 
-### 3. 基因注释 + 图表
-
-在单倍型表上叠加基因结构。
+### 基因注释与单倍型表图
 
 ```bash
 haplokit view in.vcf.gz -r chr1:1000-2000 --gff genes.gff3 --plot --output-file out
 ```
 
-`genes.gff3` 格式（标准 GFF3）：
-
-```text
-chr1	.	gene	1000	3000	.	+	.	ID=gene1;Name=GeneA
-chr1	.	CDS	1200	1500	.	+	0	ID=cds1;Parent=gene1
-```
-
-添加 SnpEff 风格功能分类色带（CDS、UTR、exon、intron、intergenic）到变异位点上。输出图片（`out/*.png`）+ `gff_ann_summary.tsv`。
+GFF3/GTF 文件既用于 gene selector，也用于图中的功能分类色带。输出包括表格图和 `gff_ann_summary.tsv`。
 
 <img src="data/figure/haplotype_table.png" alt="单倍型汇总表" width="800">
 
-图表组件：
-
-- **标题**：区域 + 重叠基因名（提供 `--gff` 时）
-- **功能色带**（仅 `--gff`）：彩色条按功能类别标注每个变异
-- **POS / ALLELE 行**：变异位置和替代等位基因
-- **单倍型行**（H001、H002、...）：每位点等位基因；空 = 参考
-- **群体列**（`--population`）：各群体各单倍型样本数
-- **n/N**：单倍型频率
-- **图例**（仅 `--gff`）：功能类别颜色
-- **Indel 脚注**：多等位基因 Indel 用上标标记标注
-
-### 4. 群体分组
-
-比较不同群体间的单倍型分布。
+### 群体分组
 
 ```bash
 haplokit view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --plot --output-file out
 ```
 
-`popgroup.txt`（Tab 分隔：`sample<TAB>population`）：
+`popgroup.txt` 是两列 tab 分隔文件：
 
 ```text
-C1	wild
-C2	wild
-C13	landrace
+sample  population
+C1      wild
+C2      wild
+C13     landrace
 ```
 
-在表和图中添加群体列。
+群体信息会进入输出表格的计数列，也会进入图中的群体统计。
 
-### 5. 地理分布图
-
-在采样地点上映射单倍型组成。
+### 地理分布
 
 ```bash
 haplokit view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --geo data/sample_china_geo.txt --plot --output-file out
 ```
 
-`sample_china_geo.txt` 和 `sample_world_geo.txt` 是 Tab 分隔的坐标示例（`ID<TAB>longitude<TAB>latitude<TAB>Hap`）。`Hap` 列用于独立绘图示例；CLI 地图绘图会从 VCF 结果中推断每个样本的单倍型。
+坐标文件为 tab 分隔：
 
 ```text
-ID	longitude	latitude	Hap
-C1	116.40	39.90	H001
-C2	116.40	39.90	H002
-C3	116.40	39.90	H001
+ID    longitude  latitude
+C1    116.40     39.90
+C2    116.40     39.90
 ```
+
+使用 `--show-counts` 在地图饼图中心显示样本数，或使用 `--hide-counts` 显式隐藏。
 
 <img src="data/figure/haplotype_map_china.png" alt="单倍型地理分布图" width="600">
 
-`data/` 下包含世界地图示例资源：
+`data/` 中附带世界地图示例资源：
 
-- `sample_world_geo.txt` 与 `sample_china_geo.txt` 保持相同的 `ID/Hap` 组成，只把坐标替换为全球采样地点。
-- `world_countries.shp`、`world_countries.shx` 和 `world_countries.dbf` 提供示例世界地图 shapefile。
-- `haplotype_map_world.png` 是 `data/figure/` 下生成好的世界地图示例图。
+- `sample_world_geo.txt`
+- `world_countries.shp`, `world_countries.shx`, `world_countries.dbf`
+- `data/figure/haplotype_map_world.png`
 
 <img src="data/figure/haplotype_map_world.png" alt="世界单倍型地理分布图" width="600">
 
-图表组件：
-
-- **饼图**：每位置单倍型组成；大小 ∝ √(样本数)
-- **颜色图例**：单倍型颜色键
-- **气泡大小图例**：ggplot2 风格分级圆圈，展示样本数刻度
-- **底图**：GeoJSON 省界多边形（中国）或随附的世界地图 shapefile 示例
-
-### 6. 单倍型网络 — popart 风格
-
-构建单倍型网络，以 [popart](https://popart.maths.otago.ac.nz/) (Leigh & Bryant, 2015) 的视觉规范呈现。支持三种推断方法：TCS (Clement et al. 2002)、MSN 和 MJN (Bandelt, Forster & Röhl 1999)。
+### 单倍型网络
 
 ```bash
 haplokit view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --network --plot --output-file out
 haplokit view in.vcf.gz -r chr1:1000-2000 --network --network-method mjn --plot --output-file out
 ```
 
-图表组件：
+支持的网络算法：
 
-- **节点**：每个单倍型一个圆；面积 ∝ √(样本数)
-- **饼图扇区**（配合 `-p`）：单倍型的群体组成
-- **边**：理想长度正比于突变距离（力导向布局）
-- **边上的横线刻度**：每条横线代表一个突变（popart 规范）
-- **小黑点**：TCS 推断的中间（祖先）节点
+| 方法 | 含义 |
+| --- | --- |
+| `msn` | Minimum spanning network |
+| `tcs` | Statistical parsimony network |
+| `mjn` | Median-joining network |
 
-![网络算法对比 — MSN / TCS / MJN](data/figure/haplotype_network_algorithms.png)
+网络图遵循 PopART 风格：节点面积表示单倍型样本数，饼图扇区表示群体组成，边上的刻度表示突变步数，小黑点表示推断出的中间节点。
 
-### 7. 表型统计模块
+![网络算法对比 - MSN / TCS / MJN](data/figure/haplotype_network_algorithms.png)
 
-`haplokit phenotype` 将单倍型分配结果和样本表型表连接起来。输入可以是
-`haplokit view` 输出的 `hapresult.tsv`，也可以是 `samples,haplotypes` 形式的两列表。
-表型表第一列为样本 ID，其余列为数值性状。模块保持“后端计算、前端绘图”的边界：
-统计检验在数据层完成，绘图层只负责可视化。
+## 表型统计模块
+
+`haplokit phenotype` 将单倍型分组与数值表型表连接起来。单倍型输入可以是 `haplokit view` 输出的 `hapresult.tsv`，也可以是简单的两列 sample-to-haplotype 表。表型表第一列为样本 ID，其余被选中的列作为数值性状。
 
 ```bash
 haplokit phenotype \
@@ -185,36 +181,9 @@ haplokit phenotype \
   --method welch \
   --output yield_stats.tsv \
   --summary-output yield_summary.tsv
-
-haplokit phenotype \
-  --hapresult out/hapresult.tsv \
-  --phenotypes phenotype.csv \
-  --population popgroup.txt \
-  --trait yield \
-  --min-hap-size 5 \
-  --method welch \
-  --output yield_stats.tsv \
-  --plot-box \
-  --comparison Hap01,Hap02 \
-  --figsize 7,4 \
-  --plot-format pdf \
-  --box-output yield_box.pdf
 ```
 
-表型统计流程对每个性状运行单因素 ANOVA 和单倍型两两检验。两两检验方法可用
-`--method` 显式选择，包括 `welch`（默认）、`student`、`mannwhitney` 和 `tukey`；
-非 Tukey 检验默认使用 Bonferroni 校正。低于 `--min-hap-size` 的单倍型分组会按性状
-剔除。提供 `--population/--pop-group` 时，检验按群体分层执行，输出包含 `population`
-列。表型缺失值（`NA`、`NaN`、`null`、`.` 或空单元格）会按性状忽略，`effective_n`
-报告进入该检验分层的有效样本数。
-
-`--plot-box` 将箱线图作为同一套表型统计和分组逻辑的可视化输出：沿用相同的单倍型过滤、
-群体分层和比较规则，再将一个性状绘制为发表用箱线图。提供 `--population` 时，箱线图按
-群体分组，单倍型以并排箱体显示；星号显著性标注绘制在图内，包括组内单倍型比较和同一
-单倍型的组间比较。只有一个单倍型时，仅展示群体之间的比较。
-
-示例输入位于 `data/example_phenotype_haplotypes.tsv`、`data/example_phenotype.csv`
-和 `data/popgroup.txt`：
+箱线图示例：
 
 ```bash
 haplokit phenotype \
@@ -223,6 +192,7 @@ haplokit phenotype \
   -p data/popgroup.txt \
   -t yield \
   -m 4 \
+  --method welch \
   --plot-box \
   -F png \
   -T "Yield by haplotype and population" \
@@ -231,187 +201,180 @@ haplokit phenotype \
 
 <img src="data/figure/phenotype_population_boxplot.png" alt="群体分层表型箱线图" width="900">
 
-### 8. BED 批处理
+### 统计场景
 
-一次运行处理多个区域。
+| 场景 | 检验分组 | result 中的两两比较 | 箱线图显著性标注 |
+| --- | --- | --- | --- |
+| 不提供群体文件，保留多个单倍型 | `trait x haplotype` | 每个性状内所有保留单倍型两两比较 | 单倍型之间的显著性 |
+| 提供群体文件，保留多个单倍型 | `trait x population x haplotype` | 每个群体内部的单倍型两两比较 | 群体内单倍型比较；同一单倍型的群体间比较 |
+| 提供群体文件，只保留一个单倍型 | `trait x haplotype x population` | 该单倍型内部的群体两两比较 | 仅显示群体间比较 |
+| 多个性状 | 每个性状独立分析 | 每个性状输出独立结果块 | 绘图必须用 `--trait` 选择一个性状 |
+| 表型缺失值 | 按性状忽略非数值和缺失值 | 计数只包含数值样本 | `effective_n` 记录进入该分层的有效样本数 |
+| IQR 极值预处理 | 可选；在每个 `trait x population x haplotype` 内执行 Tukey IQR k=1.5 | 检验使用删除极值后的样本 | 图使用同一批过滤后的样本；summary 记录删除数量 |
+
+### 两两检验方法
+
+假设检验使用 `scipy.stats`。
+
+| `--method` | 检验 | 适用场景 | P 值校正 |
+| --- | --- | --- | --- |
+| `welch` | Welch two-sample t-test | 默认；不假设方差相等 | 非 Tukey 检验默认 Bonferroni |
+| `student` | Student two-sample t-test | 可接受方差相等假设时 | 非 Tukey 检验默认 Bonferroni |
+| `mannwhitney` | Mann-Whitney U test | 非参数秩检验 | 非 Tukey 检验默认 Bonferroni |
+| `tukey` | Tukey HSD | 多组 post-hoc 比较 | 直接使用 Tukey HSD p 值 |
+
+### 极值预处理
+
+使用 `--remove-outliers` 在统计和绘图前删除极端表型值：
+
+```bash
+haplokit phenotype \
+  -H out/hapresult.tsv \
+  -P phenotype.csv \
+  -t yield \
+  --remove-outliers \
+  -o yield_stats.tsv \
+  -s yield_summary.tsv
+```
+
+规则为 Tukey IQR，`k=1.5`：删除超出 `[Q1 - 1.5 x IQR, Q3 + 1.5 x IQR]` 的值。过滤在每个 `trait x population x haplotype` 分组内独立执行。少于 4 个数值样本的分组不执行删除。
+
+summary 输出中会记录预处理信息：
+
+| 列名 | 含义 |
+| --- | --- |
+| `raw_count` | 删除极值前的数值样本数 |
+| `raw_min`, `raw_max` | 删除前的原始范围 |
+| `outlier_removed` | 该 summary 分组中删除的值数量 |
+| `outlier_method` | `none` 或 `iqr` |
+| `outlier_iqr_k` | IQR 倍数；启用时为 `1.5` |
+
+### 表型输出文件
+
+| 文件 | 内容 |
+| --- | --- |
+| `phenotype_stats.tsv` | 两两比较结果，包括分组样本数、均值、标准差、ANOVA、两两统计量、原始 P 值、校正后 P 值、显著性标签和 `effective_n` |
+| summary TSV (`--summary-output`) | 每个性状、群体、单倍型的 summary 统计；启用极值预处理时记录删除数量 |
+| boxplot (`--plot-box`) | 对一个选定性状绘制箱线图，使用与统计结果一致的过滤、分组和比较逻辑 |
+
+## 其他流程
+
+### BED 批量处理
 
 ```bash
 haplokit view in.vcf.gz -R regions.bed --output-file out_batch
 ```
 
-`regions.bed`（≥3 列，Tab 分隔）：
+`regions.bed` 至少包含三列 tab 分隔字段：
 
 ```text
-chr1	1000	2000
-chr2	5000	6000
+chr1  1000  2000
+chr2  5000  6000
 ```
 
-每行 BED 独立处理。输出文件按区域 slug 加后缀（`_chr1_1000_2000`）。
+每个 BED 行独立处理。输出文件按区间 suffix 命名，例如 `_chr1_1000_2000`。
 
-### 9. 近似分组
-
-在容差范围内聚类相似单倍型。
+### 近似分组
 
 ```bash
 haplokit view in.vcf.gz -r chr1:1000-2000 --max-diff 0.2 --output-file out
 ```
 
-`--max-diff`（0–1）：差异 ≤ 20% 位点的单倍型归为一组。分组模式从 `strict-region` 变为 `approx-region`。
+`--max-diff` 会把差异比例不高于阈值的单倍型聚为同一组。
 
-### 10. 样本子集 + 填补
-
-限制分析到特定样本；缺失呼叫按参考等位基因填补。
+### 样本子集与缺失填补
 
 ```bash
 haplokit view in.vcf.gz -r chr1:1000-2000 -S samples.list --impute --output-file out
 ```
 
-`samples.list`（每行一个样本 ID）：
+`samples.list` 每行一个样本 ID。`--impute` 将缺失基因型视为参考型 `0/0`，以提高样本保留率。
 
-```text
-C1
-C5
-C16
-```
-
-`--impute` 将缺失 GT 视为 `0/0`，提高样本保留率。
-
-## 输出文件
-
-### `hapresult.tsv` — 逐样本单倍型详情
-
-```text
-CHR     scaffold_1  scaffold_1  ...  Haplotypes:  8
-POS     4300        4345        ...  Individuals: 37
-INFO    .           .           ...  Variants:    5
-ALLELE  G/C         T/A,GG      ...  Accession
-H001    G           T           ...  C8;C9;C11;C14;C18;C25;C26;C28;C31;C35
-```
-
-- **表头行**（CHR/POS/INFO/ALLELE）：跨列变异元数据
-- **单倍型行**（H001–HNNN）：每位点等位基因；空 = 参考；携带该单倍型的样本列表
-
-### `hap_summary.tsv` — 单倍型计数汇总
-
-与 `hapresult.tsv` 表头相同，多一列 `freq`（计数/总数）：
-
-```text
-H001  G   T   T   GCCTA  T   10
-H002  G   T   T   A      T   8
-H003  C   T   T   A      T   8
-```
-
-### `gff_ann_summary.tsv` — 基因注释（仅 `--gff`）
-
-```text
-chr           start  end   ann
-scaffold_1    4300   5000  test1G0387
-```
-
-### 图片文件（`--plot`）
-
-格式由 `--plot-format` 设定（默认 `png`）。按区域 slug 命名：`<prefix>.<chr>_<start>_<end>.png`。
-
-## 完整参数
+## 参数速查
 
 ### `haplokit view`
 
+```text
+haplokit view <input.vcf.gz|input.bcf> (-r <region> | -R <regions.bed> | --gene-id <id> | --gene-list <file>) [options]
 ```
-haplokit view [input_vcf] (-r <region> | -R <regions.bed> | --gene-id <id> | --gene-list <file>) [options]
-```
 
-`<input_vcf>` 须为已索引 VCF/BCF（`.vcf.gz` + `.tbi`，或 BCF 索引）。
+| 参数 | 默认 | 说明 |
+| --- | --- | --- |
+| `-r, --region` | selector 必选项之一 | `chr:start-end` 或 `chr:pos` |
+| `-R, --regions-file` | selector 必选项之一 | BED 文件 |
+| `-G, --gene-id` | selector 必选项之一 | 通过 `--gff/--gff3` 解析单个基因 |
+| `-l, --gene-list` | selector 必选项之一 | 每行一个基因 ID；需要 `--gff/--gff3` |
+| `-S, --samples-file` | 关闭 | 限制到指定样本 |
+| `-b, --by` | `auto` | `auto`, `region`, `site` |
+| `-i, --impute` | 关闭 | 将缺失基因型视为参考型 |
+| `-m, --max-diff` | 关闭 | 近似分组阈值，范围 `[0,1]` |
+| `-g, --gff3, --gff` | 关闭 | 用于 gene selector 和注释的 GFF3/GTF |
+| `-u, --upstream` | `0` | gene selector 上游扩展长度 |
+| `-d, --downstream` | `0` | gene selector 下游扩展长度 |
+| `-a, --strand-aware` | 关闭 | 按基因链方向解释 upstream/downstream |
+| `-o, --output` | `summary` | JSONL 输出内容：`summary` 或 `detail` |
+| `-f, --output-format` | `tsv` | 输出格式：`tsv` 或 `jsonl` |
+| `-O, --output-file` | 当前目录 | 输出目录、前缀或 JSONL 文件 |
+| `-P, --plot` | 关闭 | 绘制单倍型表图 |
+| `-F, --plot-format` | `png` | `png`, `pdf`, `svg`, `tiff` |
+| `-z, --figsize` | 自动 | 图尺寸，格式 `WIDTH,HEIGHT` |
+| `-p, --population` | 关闭 | 样本到群体的映射表 |
+| `-e, --geo` | 关闭 | 地图绘图坐标文件 |
+| `--show-counts`, `--hide-counts` | 隐藏 | 控制地图中样本数标签 |
+| `-n, --network` | 关闭 | 绘制单倍型网络 |
+| `-N, --network-method` | `tcs` | `tcs`, `msn`, `mjn` |
+| `-H, --hap-prefix` | `Hap` | 单倍型标签前缀 |
+| `-D, --hap-pad` | `2` | 标签数字补零宽度 |
 
-| 参数 | 类型 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `input_vcf` | 路径 | — | 已索引 VCF/BCF 输入文件 |
-| `-r, --region` | 字符串 | — | `chr:start-end` 或 `chr:pos` |
-| `-R, --regions-file` | 路径 | — | BED 文件（≥3 列，Tab 分隔） |
-| `-G, --gene-id` | 字符串 | — | 通过 `--gff/--gff3` 解析一个基因 ID |
-| `-l, --gene-list` | 路径 | — | 每行一个基因 ID；需要 `--gff/--gff3` |
-| `-S, --samples-file` | 路径 | — | 每行一个样本 ID |
-| `-b, --by` | `auto\|region\|site` | `auto` | 分组模式；auto 按选择器形态推断 |
-| `-i, --impute` | 开关 | 关 | 缺失 GT 按参考等位基因填补 |
-| `-m, --max-diff` | 浮点 [0,1] | — | 近似分组阈值 |
-| `-g, --gff3, --gff` | 路径 | — | 用于基因选择器和绘图的 GFF3/GTF 注释 |
-| `-u, --upstream` | 整数 | `0` | 基因选择器上游扩展碱基数 |
-| `-d, --downstream` | 整数 | `0` | 基因选择器下游扩展碱基数 |
-| `-a, --strand-aware` | 开关 | 关 | 按基因链方向应用 upstream/downstream |
-| `-o, --output` | `summary\|detail` | `summary` | 仅 JSONL 模式生效；TSV 总是双表 |
-| `-f, --output-format` | `tsv\|jsonl` | `tsv` | 输出格式 |
-| `-O, --output-file` | 路径 | — | 输出目录、前缀或 JSONL 文件 |
-| `-P, --plot` | 开关 | 关 | 生成单倍型表图 |
-| `-F, --plot-format` | `png\|pdf\|svg\|tiff` | `png` | 图片格式 |
-| `-z, --figsize` | `WIDTH,HEIGHT` | 自动 | 表格图和地图图尺寸（英寸） |
-| `-p, --population` | 路径 | — | Tab 分隔的 样本→群体 映射 |
-| `-e, --geo` | 路径 | — | 样本地理坐标（用于地图） |
-| `-C, --map-facecolor` | 颜色 | `#f5f5f0` | 地图背景色 |
-| `--show-counts` / `--hide-counts` | 开关 | 隐藏 | 显示或隐藏地图饼图中心样本数 |
-| `-n, --network` | 开关 | 关 | 渲染单倍型网络（popart 风格） |
-| `-N, --network-method` | `tcs`/`msn`/`mjn` | `tcs` | 网络推断算法 |
-| `-H, --hap-prefix` | 字符串 | `Hap` | 单倍型标签前缀 |
-| `-D, --hap-pad` | 整数 | `2` | 单倍型编号补零宽度 |
-
-选择器规则：`-r`、`-R`、`--gene-id`、`--gene-list` 必须且只能提供一个。基因选择器需要
-`--gff/--gff3`；`--upstream`、`--downstream`、`--strand-aware` 只对基因选择器有效。
-`--by site` 仅可用于 `-r chr:pos`。
+必须且只能提供一个 selector：`-r`、`-R`、`--gene-id` 或 `--gene-list`。
 
 ### `haplokit phenotype`
 
-```
-haplokit phenotype -H <hapresult.tsv> -P <phenotype.csv> [options]
+```text
+haplokit phenotype -H <hapresult.tsv|sample_hap.tsv> -P <phenotype.tsv|phenotype.csv> [options]
 ```
 
-| 参数 | 类型 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `-H, --hapresult, --haplotypes` | 路径 | 必填 | `hapresult.tsv` 或两列 sample-haplotype 表 |
-| `-P, --phenotypes, --phenotype, --pheno-file` | 路径 | 必填 | 表型表；第一列为样本 ID，其余列为性状 |
-| `-p, --population, --pop-group` | 路径 | — | 样本到群体表；检验和箱线图按群体分层 |
-| `-t, --trait` | 字符串 | 所有数值性状 | 分析的性状；可重复指定多个 |
-| `-m, --min-hap-size` | 整数 | `5` | 每个检验分层内单倍型的最小有效样本数 |
-| `-M, --method` | `welch\|student\|mannwhitney\|tukey` | `welch` | 显式选择两两检验公式/方法 |
-| `-a, --adjust` | `bonferroni\|none` | `bonferroni` | 非 Tukey 两两检验的 p 值校正 |
-| `-o, --output` | 路径 | `phenotype_stats.tsv` | 两两统计结果 TSV |
-| `-s, --summary-output` | 路径 | — | 可选的单倍型汇总统计 TSV |
-| `-B, --plot-box` | 开关 | 关 | 同时为选定性状输出箱线图 |
-| `-b, --box-output` | 路径 | `phenotype_box.png` | `--plot-box` 的输出路径 |
-| `-F, --plot-format` | `png\|pdf\|svg\|tiff` | 输出后缀 | 箱线图格式 |
-| `-z, --figsize` | `WIDTH,HEIGHT` | 自动 | 箱线图尺寸（英寸） |
-| `-T, --title` | 字符串 | — | 箱线图标题 |
-| `-c, --comparison` | `HapA,HapB` | — | `--plot-box` 中标注的一对单倍型；可重复 |
-| `-d, --delimiter` | `auto\|tab\|comma` | `auto` | hapresult/sample-haplotype 输入分隔符 |
-| `-D, --phenotype-delimiter` | `auto\|tab\|comma` | `auto` | 表型输入分隔符 |
-| `-G, --population-delimiter` | `auto\|tab\|comma` | `auto` | 群体输入分隔符 |
+| 参数 | 默认 | 说明 |
+| --- | --- | --- |
+| `-H, --hapresult, --haplotypes` | 必选 | `hapresult.tsv` 或两列 sample-haplotype 表 |
+| `-P, --phenotypes, --phenotype, --pheno-file` | 必选 | 表型表；第一列是样本 ID |
+| `-p, --population, --pop-group` | 关闭 | 样本到群体的映射表 |
+| `-t, --trait` | 所有数值性状 | 选择分析性状；可重复 |
+| `-m, --min-hap-size` | `5` | 每个检验分组所需的最小数值样本数 |
+| `-M, --method` | `welch` | `welch`, `student`, `mannwhitney`, `tukey` |
+| `-a, --adjust` | `bonferroni` | 非 Tukey 检验的 P 值校正：`bonferroni` 或 `none` |
+| `--remove-outliers` | 关闭 | 统计和绘图前删除 Tukey IQR k=1.5 极值 |
+| `-o, --output` | `phenotype_stats.tsv` | 两两统计结果 TSV |
+| `-s, --summary-output` | 关闭 | 每个单倍型的 summary TSV |
+| `-B, --plot-box` | 关闭 | 绘制表型箱线图 |
+| `-b, --box-output` | `phenotype_box.png` | 箱线图输出路径 |
+| `-F, --plot-format` | 输出后缀 | `png`, `pdf`, `svg`, `tiff` |
+| `-z, --figsize` | 自动 | 箱线图尺寸，格式 `WIDTH,HEIGHT` |
+| `-T, --title` | 自动 | 箱线图标题 |
+| `-c, --comparison` | 所有可用 pair | 指定标注的单倍型 pair，例如 `Hap01,Hap02`；可重复 |
+| `-d, --delimiter` | `auto` | 单倍型输入分隔符：`auto`, `tab`, `comma` |
+| `-D, --phenotype-delimiter` | `auto` | 表型输入分隔符 |
+| `-G, --population-delimiter` | `auto` | 群体输入分隔符 |
 
-`--plot-box` 要求最终只选中一个性状。若表型表中有多个数值性状，请用 `--trait` 指定要绘制的性状。
+`--plot-box` 需要恰好选择一个性状。
 
 ## 后端
 
-C++ 后端（`haplokit_cpp`）处理 VCF 读取和单倍型分组。发现顺序：
+后端二进制：`haplokit_cpp`。
 
-1. `HAPLOKIT_CPP_BIN` 环境变量
-2. 打包内二进制：`haplokit/_bin/haplokit_cpp`
-3. 仓库构建产物：`build-wsl/haplokit_cpp` → `build/haplokit_cpp` → `build-haplokit-python/haplokit_cpp`
-4. 回退：从源码树自动运行 `cmake` 构建；失败时报告 CMake 的真实错误
+后端发现顺序：
 
-供应商依赖库：
+1. `HAPLOKIT_CPP_BIN`
+2. 包内二进制：`haplokit/_bin/haplokit_cpp`
+3. 本地构建：`build-wsl/haplokit_cpp`, `build/haplokit_cpp`, `build-haplokit-python/haplokit_cpp`
+4. 源码树 CMake 构建兜底
 
-- **[htslib](https://github.com/samtools/htslib)** — VCF/BCF 读取，索引随机访问
-- **[gffsub](https://github.com/WWz33/gffsub)** — GFF3/GTF 解析，overlap/nearest-gene 查询
+本地组件：
 
-### 网络算法
+- [htslib](https://github.com/samtools/htslib)：indexed VCF/BCF 读取
+- [gffsub](https://github.com/WWz33/gffsub)：GFF3/GTF 解析和区间查询
 
-C++ 实现的单倍型网络算法（MSN、TCS、MJN），支持 SIMD 加速：
-
-- **库**：`libhaplokit_network.a`（C++17）
-- **算法**：MSN（最小生成网络）、TCS（统计简约）、MJN（中间连接）
-- **优化**：AVX2 SIMD Hamming 距离、OpenMP 并行
-- **Python 接口**：`haplokit.network`，自动 C++/Python 回退
-- **可视化**：PopART 风格渲染，饼图节点、突变刻度线、性状图例
-
-纯 Python 参考实现归档于 `archive/python_reference_implementation/`。
-
-## 贡献开发
+## 开发
 
 ```bash
 cmake -S . -B build-wsl && cmake --build build-wsl -j12
@@ -419,15 +382,15 @@ HAPLOKIT_CPP_BIN=$PWD/build-wsl/haplokit_cpp python -m pytest -q tests/python
 ctest --test-dir build-wsl --output-on-failure
 ```
 
-## 致谢
+## 参考
 
-设计灵感来自 geneHapR：
+`haplokit` 受 geneHapR 启发：
 
 > Zhang, R., Jia, G. & Diao, X. geneHapR: an R package for gene haplotypic statistics and visualization. BMC Bioinformatics 24, 199 (2023). https://doi.org/10.1186/s12859-023-05318-9
 
-网络可视化遵循 [popart](https://popart.maths.otago.ac.nz/) 的规范：
+网络图遵循 PopART 的可视化约定：
 
-> Leigh, J. W. & Bryant, D. popart: full‐feature software for haplotype network construction. Methods in Ecology and Evolution 6, 1110–1116 (2015). https://doi.org/10.1111/2041-210X.12410
+> Leigh, J. W. & Bryant, D. popart: full-feature software for haplotype network construction. Methods in Ecology and Evolution 6, 1110-1116 (2015). https://doi.org/10.1111/2041-210X.12410
 
 ## 许可证
 
