@@ -208,6 +208,7 @@ def build_parser() -> HaolokitArgumentParser:
     phenotype_test.add_argument("-m", "--min-hap-size", type=_positive_int_value, default=5, help="minimum numeric samples per haplotype within each test stratum")
     phenotype_test.add_argument("-M", "--method", choices=["welch", "student", "mannwhitney", "tukey"], default="welch", help="explicit pairwise test formula/method")
     phenotype_test.add_argument("-a", "--adjust", choices=["bonferroni", "none"], default="bonferroni", help="p-value adjustment for non-Tukey pairwise tests")
+    phenotype_test.add_argument("--remove-outliers", action="store_true", help="remove phenotype outliers within each trait/population/haplotype group using Tukey IQR k=1.5 before statistics and boxplots")
     phenotype_output.add_argument("-o", "--output", default="phenotype_stats.tsv", help="output TSV for pairwise statistics")
     phenotype_output.add_argument("-s", "--summary-output", help="optional output TSV for per-haplotype summary statistics")
     phenotype_plot.add_argument("-B", "--plot-box", action="store_true", help="also render a phenotype boxplot for the selected trait")
@@ -895,6 +896,7 @@ def _run_phenotype(args) -> int:
         method=args.method,
         adjust=args.adjust,
         populations=dataset.populations or None,
+        remove_outliers=args.remove_outliers,
     )
     write_stat_tsv(rows, args.output)
     if args.summary_output:
@@ -903,6 +905,7 @@ def _run_phenotype(args) -> int:
             traits=dataset.traits,
             min_hap_size=args.min_hap_size,
             populations=dataset.populations or None,
+            remove_outliers=args.remove_outliers,
         )
         write_summary_tsv(summary_rows, args.summary_output)
 
@@ -920,6 +923,7 @@ def _run_phenotype(args) -> int:
             title=args.title,
             fmt=args.plot_format,
             figsize=args.figsize,
+            remove_outliers=args.remove_outliers,
         )
     return 0
 

@@ -278,8 +278,183 @@ def test_phenotype_cli_reports_effective_n_for_missing_values(tmp_path: Path) ->
 
     assert stat_header[-1] == "effective_n"
     assert stat_values[-1] == "5"
-    assert summary_header[-1] == "effective_n"
-    assert summary_values[-1] == "5"
+    effective_n_idx = summary_header.index("effective_n")
+    assert summary_values[effective_n_idx] == "5"
+    assert summary_values[summary_header.index("outlier_removed")] == "0"
+
+
+def test_iqr_outlier_preprocessing_filters_statistics_and_summary() -> None:
+    records = (
+        PhenotypeRecord("S1", "Hap01", "yield", 1.0),
+        PhenotypeRecord("S2", "Hap01", "yield", 2.0),
+        PhenotypeRecord("S3", "Hap01", "yield", 3.0),
+        PhenotypeRecord("S4", "Hap01", "yield", 100.0),
+        PhenotypeRecord("S5", "Hap02", "yield", 1.0),
+        PhenotypeRecord("S6", "Hap02", "yield", 2.0),
+        PhenotypeRecord("S7", "Hap02", "yield", 3.0),
+        PhenotypeRecord("S8", "Hap02", "yield", 4.0),
+    )
+
+    raw_summary = summarize_groups(records, traits=["yield"], min_hap_size=3)
+    filtered_summary = summarize_groups(records, traits=["yield"], min_hap_size=3, remove_outliers=True)
+    filtered_rows = pairwise_statistics(records, traits=["yield"], min_hap_size=3, remove_outliers=True)
+
+    raw_hap1 = next(row for row in raw_summary if row["haplotype"] == "Hap01")
+    filtered_hap1 = next(row for row in filtered_summary if row["haplotype"] == "Hap01")
+    assert raw_hap1["count"] == 4
+    assert raw_hap1["max"] == 100.0
+    assert filtered_hap1["count"] == 3
+    assert filtered_hap1["raw_count"] == 4
+    assert filtered_hap1["raw_max"] == 100.0
+    assert filtered_hap1["max"] == 3.0
+    assert filtered_hap1["outlier_removed"] == 1
+    assert filtered_hap1["outlier_method"] == "iqr"
+    assert filtered_hap1["outlier_iqr_k"] == 1.5
+    assert filtered_rows[0]["count1"] == 3
+
+
+def test_iqr_outlier_preprocessing_is_scoped_by_population() -> None:
+    records = (
+        PhenotypeRecord("A1", "Hap01", "yield", 1.0, "PopA"),
+        PhenotypeRecord("A2", "Hap01", "yield", 2.0, "PopA"),
+        PhenotypeRecord("A3", "Hap01", "yield", 3.0, "PopA"),
+        PhenotypeRecord("A4", "Hap01", "yield", 100.0, "PopA"),
+        PhenotypeRecord("B1", "Hap01", "yield", 100.0, "PopB"),
+        PhenotypeRecord("B2", "Hap01", "yield", 101.0, "PopB"),
+        PhenotypeRecord("B3", "Hap01", "yield", 102.0, "PopB"),
+        PhenotypeRecord("B4", "Hap01", "yield", 103.0, "PopB"),
+    )
+
+    summary = summarize_groups(
+        records,
+        traits=["yield"],
+        min_hap_size=3,
+        populations=["PopA", "PopB"],
+        remove_outliers=True,
+    )
+
+    by_population = {row["population"]: row for row in summary}
+    assert by_population["PopA"]["count"] == 3
+    assert by_population["PopA"]["outlier_removed"] == 1
+    assert by_population["PopB"]["count"] == 4
+    assert by_population["PopB"]["outlier_removed"] == 0
+
+
+def test_phenotype_cli_remove_outliers_records_summary_counts(tmp_path: Path) -> None:
+    haplotypes = tmp_path / "haplotypes.tsv"
+    phenotype = tmp_path / "phenotype.tsv"
+    stats_out = tmp_path / "stats.tsv"
+    summary_out = tmp_path / "summary.tsv"
+    haplotypes.write_text(
+        "\n".join(
+            [
+                "sample\thaplotype",
+                "S1\tHap01",
+                "S2\tHap01",
+                "S3\tHap01",
+                "S4\tHap01",
+                "S5\tHap02",
+                "S6\tHap02",
+                "S7\tHap02",
+                "S8\tHap02",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    phenotype.write_text(
+        "\n".join(
+            [
+                "sample\tyield",
+                "S1\t1",
+                "S2\t2",
+                "S3\t3",
+                "S4\t100",
+                "S5\t1",
+                "S6\t2",
+                "S7\t3",
+                "S8\t4",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "phenotype",
+            "--hapresult",
+            str(haplotypes),
+            "--phenotypes",
+            str(phenotype),
+            "--trait",
+            "yield",
+            "--min-hap-size",
+            "3",
+            "--delimiter",
+            "tab",
+            "--phenotype-delimiter",
+            "tab",
+            "--remove-outliers",
+            "--output",
+            str(stats_out),
+            "--summary-output",
+            str(summary_out),
+        ]
+    )
+
+    assert exit_code == 0
+    stats_lines = stats_out.read_text(encoding="utf-8").splitlines()
+    stats_header = stats_lines[0].split("\t")
+    stats_values = stats_lines[1].split("\t")
+    assert stats_values[stats_header.index("count1")] == "3"
+    assert stats_values[stats_header.index("count2")] == "4"
+
+    lines = summary_out.read_text(encoding="utf-8").splitlines()
+    header = lines[0].split("\t")
+    values_by_hap = {line.split("\t")[header.index("haplotype")]: line.split("\t") for line in lines[1:]}
+    hap1_values = values_by_hap["Hap01"]
+    assert hap1_values[header.index("count")] == "3"
+    assert hap1_values[header.index("raw_count")] == "4"
+    assert hap1_values[header.index("raw_max")] == "100"
+    assert hap1_values[header.index("outlier_removed")] == "1"
+    assert hap1_values[header.index("outlier_method")] == "iqr"
+    assert hap1_values[header.index("outlier_iqr_k")] == "1.5"
+
+
+def test_plot_hap_phenotype_box_uses_iqr_filtered_values(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    records = (
+        PhenotypeRecord("S1", "Hap01", "yield", 1.0),
+        PhenotypeRecord("S2", "Hap01", "yield", 2.0),
+        PhenotypeRecord("S3", "Hap01", "yield", 3.0),
+        PhenotypeRecord("S4", "Hap01", "yield", 100.0),
+        PhenotypeRecord("S5", "Hap02", "yield", 1.0),
+        PhenotypeRecord("S6", "Hap02", "yield", 2.0),
+        PhenotypeRecord("S7", "Hap02", "yield", 3.0),
+        PhenotypeRecord("S8", "Hap02", "yield", 4.0),
+    )
+    captured: list[list[float]] = []
+
+    def capture_points(_ax, data, _positions, width):
+        _ = width
+        captured.extend([list(values) for values in data])
+
+    monkeypatch.setattr(phenotype_plot, "_scatter_points", capture_points)
+
+    plot_hap_phenotype_box(
+        records,
+        trait="yield",
+        output_path=tmp_path / "iqr_filtered.svg",
+        min_hap_size=3,
+        fmt="svg",
+        remove_outliers=True,
+    )
+
+    assert [1.0, 2.0, 3.0] in captured
+    assert all(100.0 not in values for values in captured)
 
 
 def test_phenotype_statistics_stratify_by_population_group(tmp_path: Path) -> None:
@@ -539,6 +714,7 @@ def test_phenotype_cli_accepts_short_options(capsys: pytest.CaptureFixture[str])
             "3",
             "-M",
             "mannwhitney",
+            "--remove-outliers",
             "-c",
             "Hap01,Hap02",
             "-d",
@@ -558,6 +734,7 @@ def test_phenotype_cli_accepts_short_options(capsys: pytest.CaptureFixture[str])
     assert box_args.figsize == (6.0, 4.0)
     assert box_args.comparison == [("Hap01", "Hap02")]
     assert box_args.title == "Yield by haplotype"
+    assert box_args.remove_outliers is True
 
     with pytest.raises(SystemExit):
         parser.parse_args(

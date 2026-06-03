@@ -13,6 +13,7 @@ from ._phenotype import (
     load_phenotype_dataset,
     pairwise_statistics,
     population_pairwise_statistics,
+    _preprocess_records,
     significance_label,
     sort_haplotype_labels,
 )
@@ -35,6 +36,7 @@ def plot_hap_phenotype_box(
     title: str | None = None,
     fmt: str | None = None,
     figsize: tuple[float, float] | None = None,
+    remove_outliers: bool = False,
 ) -> Path:
     """Plot phenotype distributions by haplotype as boxplots with jittered samples."""
     if output_path is None:
@@ -61,6 +63,7 @@ def plot_hap_phenotype_box(
         records = dataset.records
         hap_order = dataset.haplotypes
         population_order = list(populations) if populations is not None else list(dataset.populations or [None])
+    records = tuple(_preprocess_records(records, remove_outliers=remove_outliers)[0])
 
     grouped_panels = [
         (population, group_values(records, trait, min_hap_size=min_hap_size, haplotypes=hap_order, population=population))

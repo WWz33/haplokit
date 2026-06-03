@@ -72,11 +72,20 @@ SUMMARY_COLUMNS = [
     "min",
     "max",
     "effective_n",
+    "raw_count",
+    "raw_min",
+    "raw_max",
+    "outlier_removed",
+    "outlier_method",
+    "outlier_iqr_k",
 ]
 
 _SAMPLE_ALIASES = {"sample", "samples", "accession", "accessions", "id", "ids", "individual", "individuals"}
 _HAP_ALIASES = {"hap", "haps", "haplotype", "haplotypes", "group", "groups", "hap_group", "hap_groups"}
 _NA_VALUES = {"", "na", "nan", "null", "none", "."}
+_IQR_OUTLIER_K = 1.5
+_OUTLIER_NONE = "none"
+_OUTLIER_IQR = "iqr"
 
 
 def read_sample_haplotypes(path: str | Path, delimiter: str = "auto") -> list[SampleHaplotype]:
@@ -266,8 +275,9 @@ def summarize_groups(
     traits: Sequence[str] | None = None,
     min_hap_size: int = 1,
     populations: Sequence[str] | None = None,
+    remove_outliers: bool = False,
 ) -> list[dict[str, object]]:
-    record_list = list(records)
+    record_list, outlier_meta = _preprocess_records(records, remove_outliers=remove_outliers)
     selected_traits = list(traits) if traits is not None else _traits_from_records(record_list)
     selected_populations = _population_strata(record_list, populations)
     rows: list[dict[str, object]] = []
@@ -281,6 +291,7 @@ def summarize_groups(
             )
             effective_n = sum(len(values) for values in grouped.values())
             for haplotype, values in grouped.items():
+                meta = _outlier_meta_for(outlier_meta, trait, population, haplotype, values)
                 rows.append(
                     {
                         "trait": trait,
@@ -292,6 +303,12 @@ def summarize_groups(
                         "min": min(values),
                         "max": max(values),
                         "effective_n": effective_n,
+                        "raw_count": meta["raw_count"],
+                        "raw_min": meta["raw_min"],
+                        "raw_max": meta["raw_max"],
+                        "outlier_removed": meta["outlier_removed"],
+                        "outlier_method": meta["outlier_method"],
+                        "outlier_iqr_k": meta["outlier_iqr_k"],
                     }
                 )
     return rows
@@ -306,10 +323,11 @@ def pairwise_statistics(
     adjust: str = "bonferroni",
     alpha: float = 0.05,
     populations: Sequence[str] | None = None,
+    remove_outliers: bool = False,
 ) -> list[dict[str, object]]:
     """Compute per-trait ANOVA plus pairwise haplotype comparisons."""
     stats = _require_scipy()
-    record_list = list(records)
+    record_list, _ = _preprocess_records(records, remove_outliers=remove_outliers)
     selected_traits = list(traits) if traits is not None else _traits_from_records(record_list)
     selected_populations = _population_strata(record_list, populations)
     rows: list[dict[str, object]] = []
@@ -368,10 +386,11 @@ def population_pairwise_statistics(
     alpha: float = 0.05,
     haplotypes: Sequence[str] | None = None,
     populations: Sequence[str] | None = None,
+    remove_outliers: bool = False,
 ) -> list[dict[str, object]]:
     """Compute per-haplotype phenotype comparisons across populations."""
     stats = _require_scipy()
-    record_list = list(records)
+    record_list, _ = _preprocess_records(records, remove_outliers=remove_outliers)
     selected_traits = list(traits) if traits is not None else _traits_from_records(record_list)
     selected_haplotypes = list(haplotypes) if haplotypes is not None else sort_haplotype_labels(
         {record.haplotype for record in record_list}
@@ -568,6 +587,96 @@ def _population_strata(records: Sequence[PhenotypeRecord], populations: Sequence
         return list(populations)
     discovered = sort_haplotype_labels({record.population for record in records if record.population})
     return discovered if discovered else [None]
+
+
+def _preprocess_records(
+    records: Iterable[PhenotypeRecord],
+    *,
+    remove_outliers: bool,
+) -> tuple[list[PhenotypeRecord], dict[tuple[str, str | None, str], dict[str, object]]]:
+    record_list = list(records)
+    if not remove_outliers:
+        return record_list, _outlier_metadata(record_list, method=_OUTLIER_NONE, removed_keys={})
+    return _remove_iqr_outliers(record_list)
+
+
+def _remove_iqr_outliers(
+    records: Sequence[PhenotypeRecord],
+) -> tuple[list[PhenotypeRecord], dict[tuple[str, str | None, str], dict[str, object]]]:
+    grouped: dict[tuple[str, str | None, str], list[float]] = defaultdict(list)
+    for record in records:
+        grouped[_outlier_key(record)].append(record.value)
+
+    removed_keys: dict[tuple[str, str | None, str], set[float]] = {}
+    bounds: dict[tuple[str, str | None, str], tuple[float, float]] = {}
+    for key, values in grouped.items():
+        if len(values) < 4:
+            continue
+        q1, _, q3 = statistics.quantiles(values, n=4, method="inclusive")
+        iqr = q3 - q1
+        lower = q1 - _IQR_OUTLIER_K * iqr
+        upper = q3 + _IQR_OUTLIER_K * iqr
+        bounds[key] = (lower, upper)
+
+    filtered: list[PhenotypeRecord] = []
+    for record in records:
+        key = _outlier_key(record)
+        lower, upper = bounds.get(key, (-math.inf, math.inf))
+        if lower <= record.value <= upper:
+            filtered.append(record)
+        else:
+            removed_keys.setdefault(key, set()).add(record.value)
+
+    return filtered, _outlier_metadata(records, method=_OUTLIER_IQR, removed_keys=removed_keys)
+
+
+def _outlier_metadata(
+    records: Sequence[PhenotypeRecord],
+    *,
+    method: str,
+    removed_keys: dict[tuple[str, str | None, str], set[float]],
+) -> dict[tuple[str, str | None, str], dict[str, object]]:
+    grouped: dict[tuple[str, str | None, str], list[float]] = defaultdict(list)
+    for record in records:
+        grouped[_outlier_key(record)].append(record.value)
+
+    metadata: dict[tuple[str, str | None, str], dict[str, object]] = {}
+    for key, values in grouped.items():
+        removed_values = removed_keys.get(key, set())
+        removed_count = sum(1 for value in values if value in removed_values)
+        metadata[key] = {
+            "raw_count": len(values),
+            "raw_min": min(values),
+            "raw_max": max(values),
+            "outlier_removed": removed_count,
+            "outlier_method": method,
+            "outlier_iqr_k": _IQR_OUTLIER_K if method == _OUTLIER_IQR else math.nan,
+        }
+    return metadata
+
+
+def _outlier_meta_for(
+    metadata: dict[tuple[str, str | None, str], dict[str, object]],
+    trait: str,
+    population: str | None,
+    haplotype: str,
+    values: Sequence[float],
+) -> dict[str, object]:
+    return metadata.get(
+        (trait, population, haplotype),
+        {
+            "raw_count": len(values),
+            "raw_min": min(values),
+            "raw_max": max(values),
+            "outlier_removed": 0,
+            "outlier_method": _OUTLIER_NONE,
+            "outlier_iqr_k": math.nan,
+        },
+    )
+
+
+def _outlier_key(record: PhenotypeRecord) -> tuple[str, str | None, str]:
+    return (record.trait, record.population, record.haplotype)
 
 
 def _require_scipy():
