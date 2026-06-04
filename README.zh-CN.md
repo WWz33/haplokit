@@ -295,13 +295,15 @@ haplokit view in.vcf.gz -r chr1:1000-2000 -S samples.list --impute --output-file
 ### `haplokit view`
 
 ```text
-haplokit view <input.vcf.gz|input.bcf> (-r <region> | -R <regions.bed> | --gene-id <id> | --gene-list <file>) [options]
+haplokit view <input.vcf.gz|input.bcf> (-r <region> | -R <regions.bed> | -t <targets> | -T <targets.txt> | --gene-id <id> | --gene-list <file>) [options]
 ```
 
 | 参数 | 默认 | 说明 |
 | --- | --- | --- |
 | `-r, --region` | selector 必选项之一 | `chr:start-end` 或 `chr:pos` |
 | `-R, --regions-file` | selector 必选项之一 | BED 文件 |
+| `-t, --targets` | selector 必选项之一 | 同一染色体上逗号分隔的 target 区间（`chr:pos` 或 `chr:start-end`） |
+| `-T, --targets-file` | selector 必选项之一 | 同一染色体上每行一个 target 区间；不接受 `-` 作为标准输入 |
 | `-G, --gene-id` | selector 必选项之一 | 通过 `--gff/--gff3` 解析单个基因 |
 | `-l, --gene-list` | selector 必选项之一 | 每行一个基因 ID；需要 `--gff/--gff3` |
 | `-S, --samples-file` | 关闭 | 限制到指定样本 |
@@ -326,7 +328,8 @@ haplokit view <input.vcf.gz|input.bcf> (-r <region> | -R <regions.bed> | --gene-
 | `-H, --hap-prefix` | `Hap` | 单倍型标签前缀 |
 | `-D, --hap-pad` | `2` | 标签数字补零宽度 |
 
-必须且只能提供一个 selector：`-r`、`-R`、`--gene-id` 或 `--gene-list`。
+必须且只能提供一个 selector：`-r`、`-R`、`-t`、`-T`、`--gene-id` 或 `--gene-list`。
+通过 `-t` 或 `-T` 提供的 targets 必须位于同一条染色体。
 
 ### `haplokit phenotype`
 

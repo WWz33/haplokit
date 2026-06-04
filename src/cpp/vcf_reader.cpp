@@ -1,6 +1,7 @@
 #include "vcf_reader.h"
 
 #include <cstdlib>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -111,6 +112,78 @@ VariantRecord build_variant_record(
 
 VcfReader::VcfReader(std::string path) : path_(std::move(path)) {}
 
+std::string region_query(const Region& region) {
+    return region.chrom + ":" + std::to_string(region.start) + "-" + std::to_string(region.end);
+}
+
+RegionData VcfReader::fetch_targets(const std::vector<Region>& targets, const std::vector<std::string>& samples) const {
+    if (targets.empty()) {
+        throw std::runtime_error("target region list must not be empty");
+    }
+
+    std::ostringstream query;
+    for (std::size_t idx = 0; idx < targets.size(); ++idx) {
+        if (idx > 0) {
+            query << ",";
+        }
+        query << region_query(targets[idx]);
+    }
+
+    RegionData data;
+    bcf_srs_t* sr = bcf_sr_init();
+    int32_t* gt_buffer = nullptr;
+    int gt_buffer_len = 0;
+
+    if (sr == nullptr) {
+        throw std::runtime_error("failed to initialize synced bcf reader");
+    }
+
+    try {
+        const std::string query_string = query.str();
+        if (bcf_sr_set_regions(sr, query_string.c_str(), 0) != 0) {
+            throw std::runtime_error("failed to set target query: " + query_string);
+        }
+
+        bcf_sr_set_opt(sr, BCF_SR_REQUIRE_IDX);
+        if (!bcf_sr_add_reader(sr, path_.c_str())) {
+            throw std::runtime_error("failed to add indexed VCF/BCF reader: " + std::string(bcf_sr_strerror(sr->errnum)));
+        }
+
+        bcf_hdr_t* hdr = bcf_sr_get_header(sr, 0);
+        if (hdr == nullptr) {
+            throw std::runtime_error("failed to read VCF header");
+        }
+
+        std::vector<int> sample_indexes;
+        data.samples = resolve_samples(hdr, samples, &sample_indexes);
+
+        if (!samples.empty()) {
+            std::string sample_list;
+            for (std::size_t i = 0; i < samples.size(); ++i) {
+                if (i > 0) sample_list += ",";
+                sample_list += samples[i];
+            }
+            bcf_sr_set_samples(sr, sample_list.c_str(), 0);
+        }
+
+        while (bcf_sr_next_line(sr) > 0) {
+            bcf1_t* rec = bcf_sr_get_line(sr, 0);
+            if (rec == nullptr) {
+                continue;
+            }
+            data.variants.push_back(build_variant_record(hdr, rec, sample_indexes, &gt_buffer, &gt_buffer_len));
+        }
+    } catch (...) {
+        std::free(gt_buffer);
+        bcf_sr_destroy(sr);
+        throw;
+    }
+
+    std::free(gt_buffer);
+    bcf_sr_destroy(sr);
+    return data;
+}
+
 RegionData VcfReader::fetch(const Region& region, const std::vector<std::string>& samples) const {
     RegionData data;
     bcf_srs_t* sr = bcf_sr_init();
@@ -122,8 +195,7 @@ RegionData VcfReader::fetch(const Region& region, const std::vector<std::string>
     }
 
     try {
-        const std::string query =
-            region.chrom + ":" + std::to_string(region.start) + "-" + std::to_string(region.end);
+        const std::string query = region_query(region);
         if (bcf_sr_set_regions(sr, query.c_str(), 0) != 0) {
             throw std::runtime_error("failed to set region query: " + query);
         }

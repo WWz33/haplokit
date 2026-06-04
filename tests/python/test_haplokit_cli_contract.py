@@ -72,9 +72,21 @@ def test_view_rejects_r_and_r_file_together() -> None:
     with pytest.raises(SystemExit):
         parser.parse_args(["view", "-r", "chr1:1-10", "-R", "regions.bed"])
     with pytest.raises(SystemExit):
+        parser.parse_args(["view", "-r", "chr1:1-10", "-t", "chr1:1,chr1:10"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["view", "-R", "regions.bed", "-T", "targets.txt"])
+    with pytest.raises(SystemExit):
         parser.parse_args(["view", "-r", "chr1:1-10", "--gene-id", "gene1", "--gff", "anno.gff"])
     with pytest.raises(SystemExit):
         parser.parse_args(["view", "--gene-id", "gene1", "--gene-list", "genes.txt", "--gff", "anno.gff"])
+
+
+def test_view_rejects_conflicting_target_filters() -> None:
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["view", "-t", "chr1:1", "-T", "targets.txt"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["view", "-T", "-"])
 
 
 def test_view_defaults_to_tsv_and_infers_region_mode_for_interval() -> None:
@@ -93,6 +105,29 @@ def test_view_infers_site_mode_from_single_position_region() -> None:
 
     assert args.by == "site"
     assert args.region == "chr1:1450"
+
+
+def test_view_targets_infer_region_mode() -> None:
+    parser = build_parser()
+    args = parser.parse_args(["view", "input.vcf.gz", "-t", "chr1:1450,chr1:1452"])
+
+    assert args.by == "region"
+    assert args.targets == ("chr1:1450", "chr1:1452")
+
+    file_args = parser.parse_args(["view", "input.vcf.gz", "-T", "targets.txt"])
+    assert file_args.by == "region"
+    assert file_args.targets_file == "targets.txt"
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["view", "input.vcf.gz", "-t", "chr1:1450,chr1:1452", "--by", "site"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["view", "input.vcf.gz", "-t", "chr1:1450,chr2:1452"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["view", "input.vcf.gz", "-t", "chr1:1452-1450"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["view", "input.vcf.gz", "-t", "chr1:1450,"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["view", "input.vcf.gz", "-t", "chr1:1450,,chr1:1452"])
 
 
 def test_view_rejects_conflicting_explicit_by_values() -> None:
@@ -195,7 +230,7 @@ def test_view_help_describes_parameters(capsys: pytest.CaptureFixture[str]) -> N
     assert "Haplotype visualization options" in out
     assert "Haplotype network options" in out
     assert "indexed VCF/BCF input path" in out
-    for token in ["-C", "--map-facecolor", "-z", "--figsize", "FIGSIZE", "--show-counts", "--hide-counts"]:
+    for token in ["-t", "--targets", "-T", "--targets-file", "-C", "--map-facecolor", "-z", "--figsize", "FIGSIZE", "--show-counts", "--hide-counts"]:
         assert token in out
     assert "haplotype network inference method" in out
 
@@ -353,6 +388,54 @@ def test_main_still_supports_jsonl_when_explicitly_requested(tmp_path: Path, ind
     assert first_hap["frequency_label"] == f"{first_hap['count']}/{payload['sample_count']}"
     assert first_hap["states"]
     assert first_hap["samples"]
+
+
+def test_main_targets_jsonl_uses_only_discrete_sites(tmp_path: Path, indexed_vcf: Path) -> None:
+    out_file = tmp_path / "targets.jsonl"
+    exit_code = main(
+        [
+            "view",
+            str(indexed_vcf),
+            "-t",
+            "scaffold_1:4300,scaffold_1:4950",
+            "--output-format",
+            "jsonl",
+            "--output-file",
+            str(out_file),
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(out_file.read_text(encoding="utf-8").strip())
+    assert payload["selector"]["type"] == "targets"
+    assert payload["region_label"] == "scaffold_1:4300,scaffold_1:4950"
+    assert payload["grouping_mode"] == "strict-region"
+    assert payload["variant_count"] == 2
+    assert [site["pos"] for site in payload["sites"]] == [4300, 4950]
+
+
+def test_main_targets_file_jsonl_uses_target_entries(tmp_path: Path, indexed_vcf: Path) -> None:
+    targets = tmp_path / "targets.txt"
+    targets.write_text("# selected sites\nscaffold_1:4300\nscaffold_1:4950\n", encoding="utf-8")
+    out_file = tmp_path / "targets_file.jsonl"
+    exit_code = main(
+        [
+            "view",
+            str(indexed_vcf),
+            "-T",
+            str(targets),
+            "--output-format",
+            "jsonl",
+            "--output-file",
+            str(out_file),
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(out_file.read_text(encoding="utf-8").strip())
+    assert payload["selector"]["type"] == "targets"
+    assert payload["region_label"] == "scaffold_1:4300,scaffold_1:4950"
+    assert [site["pos"] for site in payload["sites"]] == [4300, 4950]
 
 
 def test_main_jsonl_accepts_optional_haplotype_label_override(tmp_path: Path, indexed_vcf: Path) -> None:

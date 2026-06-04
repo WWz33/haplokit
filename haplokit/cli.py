@@ -91,6 +91,8 @@ def _figsize_value(value: str) -> tuple[float, float]:
 class Selector:
     payload: dict[str, object]
     region: str
+    targets: tuple[str, ...] = ()
+    targets_file: str | None = None
 
 
 class HaolokitArgumentParser(argparse.ArgumentParser):
@@ -104,13 +106,17 @@ class HaolokitArgumentParser(argparse.ArgumentParser):
             return
         has_region = bool(ns.region)
         has_regions_file = bool(ns.regions_file)
+        has_targets = bool(ns.targets)
+        has_targets_file = bool(ns.targets_file)
         has_gene_id = bool(ns.gene_id)
         has_gene_list = bool(ns.gene_list)
-        selector_count = sum([has_region, has_regions_file, has_gene_id, has_gene_list])
+        selector_count = sum([has_region, has_regions_file, has_targets, has_targets_file, has_gene_id, has_gene_list])
         if selector_count == 0:
-            self.error("one of -r/--region, -R/--regions-file, --gene-id, or --gene-list is required")
+            self.error("one of -r/--region, -R/--regions-file, -t/--targets, -T/--targets-file, --gene-id, or --gene-list is required")
         if selector_count > 1:
-            self.error("-r/--region, -R/--regions-file, --gene-id, and --gene-list are mutually exclusive")
+            self.error("-r/--region, -R/--regions-file, -t/--targets, -T/--targets-file, --gene-id, and --gene-list are mutually exclusive")
+        if has_targets_file and str(ns.targets_file) == "-":
+            self.error("-T/--targets-file does not read from stdin")
         if not (has_gene_id or has_gene_list) and (ns.upstream or ns.downstream or ns.strand_aware):
             self.error("--upstream, --downstream, and --strand-aware are only valid with --gene-id or --gene-list")
         if has_region:
@@ -119,6 +125,12 @@ class HaolokitArgumentParser(argparse.ArgumentParser):
             if ns.by != "auto" and ns.by != inferred_by:
                 self.error(f"--by {ns.by} conflicts with -r selector semantics ({inferred_by})")
             ns.by = inferred_by
+            return
+
+        if has_targets or has_targets_file:
+            if ns.by not in {"auto", "region"}:
+                self.error("--by site is only valid with -r chr:pos")
+            ns.by = "region"
             return
 
         if has_gene_id or has_gene_list:
@@ -161,6 +173,8 @@ def build_parser() -> HaolokitArgumentParser:
     view_input.add_argument("input_vcf", nargs="?", default=None, help="indexed VCF/BCF input path")
     view_input.add_argument("-r", "--region", dest="region", type=_region_value, help="single selector: chr:start-end or chr:pos")
     view_input.add_argument("-R", "--regions-file", dest="regions_file", help="BED file with one or more regions")
+    view_input.add_argument("-t", "--targets", dest="targets", type=_targets_value, help="comma-separated target regions: chr:pos or chr:start-end")
+    view_input.add_argument("-T", "--targets-file", dest="targets_file", help="file containing one target region per line")
     view_input.add_argument("-G", "--gene-id", dest="gene_id", help="gene ID to resolve through --gff/--gff3")
     view_input.add_argument("-l", "--gene-list", dest="gene_list", help="file containing one gene ID per line")
     view_input.add_argument("-S", "--samples-file", dest="samples_file", help="optional sample ID list to include")
@@ -236,10 +250,80 @@ def _selector_payload_from_region(region: str) -> tuple[dict[str, object], str]:
     return ({"type": "site", "chrom": chrom, "pos": pos}, f"{chrom}:{pos}-{pos}")
 
 
+def _target_tokens(value: str) -> tuple[str, ...]:
+    fields = tuple(part.strip() for part in value.split(","))
+    if not fields or any(not field for field in fields):
+        raise argparse.ArgumentTypeError("targets must contain at least one chr:pos or chr:start-end entry")
+    targets = fields
+    for target in targets:
+        _region_value(target)
+        _, start, end = _target_bounds(target)
+        if start > end:
+            raise argparse.ArgumentTypeError("target region start must be <= end")
+    chroms = {target.split(":", 1)[0] for target in targets}
+    if len(chroms) != 1:
+        raise argparse.ArgumentTypeError("target regions must be on the same chromosome")
+    return targets
+
+
+def _targets_value(value: str) -> tuple[str, ...]:
+    return _target_tokens(value)
+
+
+def _target_bounds(target: str) -> tuple[str, int, int]:
+    chrom, coords = target.split(":", 1)
+    if "-" in coords:
+        start, end = coords.split("-", 1)
+        return chrom, int(start), int(end)
+    pos = int(coords)
+    return chrom, pos, pos
+
+
+def _targets_from_file(path: str) -> tuple[str, ...]:
+    targets: list[str] = []
+    for line in Path(path).read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        try:
+            targets.extend(_target_tokens(stripped))
+        except argparse.ArgumentTypeError as exc:
+            raise ValueError(f"invalid target in {path}: {exc}") from exc
+    if not targets:
+        raise ValueError("targets file did not contain any target regions")
+    return _target_tokens(",".join(targets))
+
+
+def _selector_from_targets(targets: tuple[str, ...], targets_file: str | None = None) -> Selector:
+    spans = [_target_bounds(target) for target in targets]
+    chrom = spans[0][0]
+    start = min(span[1] for span in spans)
+    end = max(span[2] for span in spans)
+    entries = [_selector_payload_from_region(target)[0] for target in targets]
+    return Selector(
+        payload={
+            "type": "targets",
+            "chrom": chrom,
+            "start": start,
+            "end": end,
+            "targets": entries,
+        },
+        region=",".join(targets),
+        targets=targets,
+        targets_file=targets_file,
+    )
+
+
 def _selectors_from_args(args) -> list[Selector]:
     if args.region:
         payload, region = _selector_payload_from_region(args.region)
         return [Selector(payload=payload, region=region)]
+
+    if args.targets:
+        return [_selector_from_targets(args.targets)]
+
+    if args.targets_file:
+        return [_selector_from_targets(_targets_from_file(str(args.targets_file)), targets_file=str(args.targets_file))]
 
     if args.gene_id:
         return [_selector_from_gene_id(args, str(args.gene_id))]
@@ -371,16 +455,36 @@ def _check_backend_result(completed: subprocess.CompletedProcess) -> None:
 
 
 def _run_cpp_view_mode(selector: Selector, args, output_mode: str) -> dict[str, object]:
-    cmd = [
-        str(_cpp_backend_path()),
-        "view-json",
-        str(args.input_vcf),
-        selector.region,
-        "--by",
-        args.by,
-        "--output",
-        output_mode,
-    ]
+    if selector.targets:
+        if selector.targets_file:
+            cmd = [
+                str(_cpp_backend_path()),
+                "view-targets-file-json",
+                str(args.input_vcf),
+                selector.targets_file,
+                "--output",
+                output_mode,
+            ]
+        else:
+            cmd = [
+                str(_cpp_backend_path()),
+                "view-targets-json",
+                str(args.input_vcf),
+                ",".join(selector.targets),
+                "--output",
+                output_mode,
+            ]
+    else:
+        cmd = [
+            str(_cpp_backend_path()),
+            "view-json",
+            str(args.input_vcf),
+            selector.region,
+            "--by",
+            args.by,
+            "--output",
+            output_mode,
+        ]
     _append_common_args(cmd, args)
 
     completed = subprocess.run(

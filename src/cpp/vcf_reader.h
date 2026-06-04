@@ -31,6 +31,7 @@ public:
     explicit VcfReader(std::string path);
 
     RegionData fetch(const Region& region, const std::vector<std::string>& samples = {}) const;
+    RegionData fetch_targets(const std::vector<Region>& targets, const std::vector<std::string>& samples = {}) const;
 
 private:
     std::string path_;

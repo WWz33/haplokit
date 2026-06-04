@@ -3,6 +3,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "selector.h"
 #include "vcf_reader.h"
@@ -48,6 +49,22 @@ int run() {
     }
     if (site_data.variants.front().pos != 4300) {
         std::cerr << "unexpected site position " << site_data.variants.front().pos << "\n";
+        return 1;
+    }
+
+    const std::vector<haplokit::Region> targets{
+        haplokit::parse_region("scaffold_1:4300"),
+        haplokit::parse_region("scaffold_1:4950"),
+    };
+    const auto targets_data = reader.fetch_targets(targets);
+    if (targets_data.variants.size() != 2U) {
+        std::cerr << "expected 2 target variants, got " << targets_data.variants.size() << "\n";
+        return 1;
+    }
+    if (targets_data.variants.front().pos != 4300 || targets_data.variants.back().pos != 4950) {
+        std::cerr << "unexpected target positions " << targets_data.variants.front().pos << " -> "
+                  << targets_data.variants.back().pos
+                  << "\n";
         return 1;
     }
 

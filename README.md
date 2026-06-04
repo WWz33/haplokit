@@ -295,13 +295,15 @@ haplokit view in.vcf.gz -r chr1:1000-2000 -S samples.list --impute --output-file
 ### `haplokit view`
 
 ```text
-haplokit view <input.vcf.gz|input.bcf> (-r <region> | -R <regions.bed> | --gene-id <id> | --gene-list <file>) [options]
+haplokit view <input.vcf.gz|input.bcf> (-r <region> | -R <regions.bed> | -t <targets> | -T <targets.txt> | --gene-id <id> | --gene-list <file>) [options]
 ```
 
 | Option | Default | Description |
 | --- | --- | --- |
 | `-r, --region` | required selector | `chr:start-end` or `chr:pos` |
 | `-R, --regions-file` | required selector | BED file |
+| `-t, --targets` | required selector | Comma-separated target regions on one chromosome (`chr:pos` or `chr:start-end`) |
+| `-T, --targets-file` | required selector | File containing one target region per line on one chromosome; `-` is not accepted |
 | `-G, --gene-id` | required selector | Resolve one gene through `--gff/--gff3` |
 | `-l, --gene-list` | required selector | One gene ID per line; requires `--gff/--gff3` |
 | `-S, --samples-file` | off | Restrict to sample IDs in a file |
@@ -326,7 +328,8 @@ haplokit view <input.vcf.gz|input.bcf> (-r <region> | -R <regions.bed> | --gene-
 | `-H, --hap-prefix` | `Hap` | Haplotype label prefix |
 | `-D, --hap-pad` | `2` | Zero-padding width for labels |
 
-Exactly one selector is required: `-r`, `-R`, `--gene-id`, or `--gene-list`.
+Exactly one selector is required: `-r`, `-R`, `-t`, `-T`, `--gene-id`, or `--gene-list`.
+Targets supplied with `-t` or `-T` must all be on the same chromosome.
 
 ### `haplokit phenotype`
 

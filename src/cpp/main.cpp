@@ -21,6 +21,14 @@ struct ParsedViewJsonCommand {
     std::string gff3_path;
 };
 
+struct ParsedViewTargetsJsonCommand {
+    std::string input_vcf;
+    std::vector<haplokit::Region> targets;
+    std::vector<std::string> samples;
+    haplokit::ViewOptions options;
+    std::string gff3_path;
+};
+
 double parse_max_diff(const std::string& value) {
     std::size_t consumed = 0;
     double parsed = 0.0;
@@ -61,6 +69,95 @@ int64_t parse_nonnegative_window(const std::string& value, const std::string& na
         throw std::runtime_error(name + " must be a non-negative integer");
     }
     return parsed;
+}
+
+std::string trim_copy(const std::string& value) {
+    const auto first = value.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) {
+        return "";
+    }
+    const auto last = value.find_last_not_of(" \t\r\n");
+    return value.substr(first, last - first + 1);
+}
+
+std::vector<haplokit::Region> parse_target_regions(const std::string& value) {
+    std::vector<haplokit::Region> targets;
+    std::string chrom;
+    std::size_t start = 0;
+    while (start <= value.size()) {
+        const auto end = value.find(',', start);
+        const auto token = trim_copy(end == std::string::npos
+            ? value.substr(start)
+            : value.substr(start, end - start));
+        if (token.empty()) {
+            throw std::runtime_error("target list contains an empty entry");
+        }
+
+        auto region = haplokit::parse_region(token);
+        if (region.start > region.end) {
+            throw std::runtime_error("target region start must be <= end: " + token);
+        }
+        if (chrom.empty()) {
+            chrom = region.chrom;
+        } else if (region.chrom != chrom) {
+            throw std::runtime_error("targets must be on the same chromosome");
+        }
+        targets.push_back(std::move(region));
+
+        if (end == std::string::npos) {
+            break;
+        }
+        start = end + 1;
+    }
+    if (targets.empty()) {
+        throw std::runtime_error("target list must not be empty");
+    }
+    return targets;
+}
+
+std::vector<haplokit::Region> load_target_regions_file(const std::string& path) {
+    if (path == "-") {
+        throw std::runtime_error("targets file does not read from stdin");
+    }
+
+    std::ifstream handle(path);
+    if (!handle) {
+        throw std::runtime_error("failed to open targets file: " + path);
+    }
+
+    std::vector<haplokit::Region> targets;
+    std::string line;
+    while (std::getline(handle, line)) {
+        const auto stripped = trim_copy(line);
+        if (stripped.empty() || stripped.front() == '#') {
+            continue;
+        }
+        auto parsed = parse_target_regions(stripped);
+        targets.insert(targets.end(), parsed.begin(), parsed.end());
+    }
+    if (targets.empty()) {
+        throw std::runtime_error("targets file did not contain any target regions");
+    }
+    return targets;
+}
+
+haplokit::Region covering_region(const std::vector<haplokit::Region>& targets) {
+    if (targets.empty()) {
+        throw std::runtime_error("target list must not be empty");
+    }
+    haplokit::Region span = targets.front();
+    for (const auto& target : targets) {
+        if (target.chrom != span.chrom) {
+            throw std::runtime_error("targets must be on the same chromosome");
+        }
+        if (target.start < span.start) {
+            span.start = target.start;
+        }
+        if (target.end > span.end) {
+            span.end = target.end;
+        }
+    }
+    return span;
 }
 
 ParsedViewJsonCommand parse_view_json_command(int argc, char** argv) {
@@ -201,6 +298,8 @@ haplokit::ViewOptions parse_common_view_options(
                 options.output_mode = haplokit::OutputMode::Summary;
             } else if (value == "detail") {
                 options.output_mode = haplokit::OutputMode::Detail;
+            } else if (value == "both") {
+                options.output_mode = haplokit::OutputMode::Both;
             } else {
                 throw std::runtime_error("unsupported --output value: " + value);
             }
@@ -239,6 +338,21 @@ haplokit::ViewOptions parse_common_view_options(
         throw std::runtime_error("unsupported argument: " + arg);
     }
     return options;
+}
+
+ParsedViewTargetsJsonCommand parse_view_targets_json_command(int argc, char** argv, bool targets_file = false) {
+    if (argc < 4) {
+        throw std::runtime_error(
+            "usage: haplokit_cpp view-targets-json <vcf> <targets> [--samples-file path] "
+            "[--population-file path] [--impute] [--output summary|detail|both] [--max-diff x] [--gff3 path]");
+    }
+
+    ParsedViewTargetsJsonCommand parsed;
+    parsed.input_vcf = argv[2];
+    parsed.targets = targets_file ? load_target_regions_file(argv[3]) : parse_target_regions(argv[3]);
+    parsed.options = parse_common_view_options(argc, argv, 4, &parsed.samples, &parsed.gff3_path);
+    parsed.options.by = haplokit::GroupBy::Region;
+    return parsed;
 }
 
 std::vector<haplokit::Region> load_bed_regions(const std::string& path) {
@@ -299,6 +413,31 @@ int run_view_json(int argc, char** argv) {
 
     if (annotator.has_value()) {
         result.annotation = annotator->annotate(parsed.region.chrom, parsed.region.start, parsed.region.end);
+    }
+
+    std::cout << haplokit::serialize_view_result_json(result) << "\n";
+    return 0;
+}
+
+int run_view_targets_json(int argc, char** argv, bool targets_file = false) {
+    const auto parsed = parse_view_targets_json_command(argc, argv, targets_file);
+
+    std::optional<haplokit::GffAnnotator> annotator;
+    if (!parsed.gff3_path.empty()) {
+        haplokit::GffAnnotator ann;
+        if (!ann.load(parsed.gff3_path)) {
+            throw std::runtime_error("failed to parse GFF3: " + parsed.gff3_path);
+        }
+        annotator = std::move(ann);
+    }
+
+    const auto span = covering_region(parsed.targets);
+    haplokit::VcfReader reader(parsed.input_vcf);
+    const auto data = reader.fetch_targets(parsed.targets, parsed.samples);
+    auto result = haplokit::build_view_result(data, parsed.options);
+
+    if (annotator.has_value()) {
+        result.annotation = annotator->annotate(span.chrom, span.start, span.end);
     }
 
     std::cout << haplokit::serialize_view_result_json(result) << "\n";
@@ -419,6 +558,12 @@ int main(int argc, char** argv) {
         }
         if (argc >= 2 && std::string(argv[1]) == "view-json") {
             return run_view_json(argc, argv);
+        }
+        if (argc >= 2 && std::string(argv[1]) == "view-targets-json") {
+            return run_view_targets_json(argc, argv);
+        }
+        if (argc >= 2 && std::string(argv[1]) == "view-targets-file-json") {
+            return run_view_targets_json(argc, argv, true);
         }
         if (argc >= 2 && std::string(argv[1]) == "view-bed-jsonl") {
             return run_view_bed_jsonl(argc, argv);
