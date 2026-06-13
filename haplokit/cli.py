@@ -190,6 +190,7 @@ def build_parser() -> HaolokitArgumentParser:
     view_output.add_argument("-O", "--output-file", help="output directory for TSV mode or file path for JSONL mode")
     view_plotting.add_argument("-P", "--plot", action="store_true", help="render haplotype table plot artifacts")
     view_plotting.add_argument("-F", "--plot-format", choices=["png", "pdf", "svg", "tiff"], default="png", help="plot artifact format")
+    view_plotting.add_argument("--table-theme", dest="table_theme", choices=["detailed", "compact"], default="detailed", help="haplotype table visual theme")
     view_plotting.add_argument("-z", "--figsize", type=_figsize_value, help="figure size as WIDTH,HEIGHT in inches for table and map plots")
     view_plotting.add_argument("-p", "--population", dest="population_file", help="tab-separated sample-to-population map")
     view_plotting.add_argument("-e", "--geo", dest="geo_file", help="sample coordinate table for geographic haplotype plots")
@@ -885,6 +886,7 @@ def _write_plot_artifacts(
                 title=gene_name,
                 fmt=args.plot_format,
                 figsize=args.figsize,
+                theme=args.table_theme,
             ))
 
         # Geographic distribution map

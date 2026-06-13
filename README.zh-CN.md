@@ -101,7 +101,9 @@ haplokit view in.vcf.gz -r chr1:1450 --output-file out_site
 haplokit view in.vcf.gz -r chr1:1000-2000 --gff genes.gff3 --plot --output-file out
 ```
 
-GFF3/GTF 文件既用于 gene selector，也用于图中的功能分类色带。输出包括表格图和 `gff_ann_summary.tsv`。
+提供 GFF3/GTF 文件时，图中会在表格上方绘制 pyGenomeTracks 风格的基因模型（backbone/内含子、CDS、UTR，末端箭头表示链方向），并用 SNP 刻度和引导线把每个变异连到对应的等位基因列，同时附带 CDS/UTR/intron 图例。不提供 `--gff` 时只绘制表格。输出还包括 `gff_ann_summary.tsv`。
+
+`--table-theme` 选择表格样式：`detailed`（默认，方形单元格、白色网格线）或 `compact`（扁宽单元格、无边贴合、更矮的表头）。基因模型在两种样式下通用。
 
 <img src="data/figure/haplotype_table.png" alt="单倍型汇总表" width="800">
 
@@ -319,6 +321,7 @@ haplokit view <input.vcf.gz|input.bcf> (-r <region> | -R <regions.bed> | -t <tar
 | `-O, --output-file` | 当前目录 | 输出目录、前缀或 JSONL 文件 |
 | `-P, --plot` | 关闭 | 绘制单倍型表图 |
 | `-F, --plot-format` | `png` | `png`, `pdf`, `svg`, `tiff` |
+| `--table-theme` | `detailed` | 单倍型表样式：`detailed` 或 `compact` |
 | `-z, --figsize` | 自动 | 图尺寸，格式 `WIDTH,HEIGHT` |
 | `-p, --population` | 关闭 | 样本到群体的映射表 |
 | `-e, --geo` | 关闭 | 地图绘图坐标文件 |

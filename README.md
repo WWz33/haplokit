@@ -101,7 +101,13 @@ Interval selectors group by the full allele pattern across the region. Single-po
 haplokit view in.vcf.gz -r chr1:1000-2000 --gff genes.gff3 --plot --output-file out
 ```
 
-The GFF3/GTF file is used for gene selectors and for the functional category strip in the figure. Output includes the table figure and `gff_ann_summary.tsv`.
+When a GFF3/GTF file is supplied, the figure draws a pyGenomeTracks-style gene model above the table (backbone/introns, CDS, UTR, and a terminal arrow for strand), with SNP ticks and guide lines connecting each variant to its allele column, plus a CDS/UTR/intron legend. Without `--gff` only the table is drawn. Output also includes `gff_ann_summary.tsv`.
+
+`--table-theme` selects the table look: `detailed` (default; square cells with white gridlines) or `compact` (flat wide cells, flush, shorter header). The gene model is shared by both themes.
+
+```bash
+haplokit view in.vcf.gz -r chr1:1000-2000 --gff genes.gff3 --plot --table-theme compact --output-file out
+```
 
 <img src="data/figure/haplotype_table.png" alt="Haplotype summary table" width="800">
 
@@ -319,6 +325,7 @@ haplokit view <input.vcf.gz|input.bcf> (-r <region> | -R <regions.bed> | -t <tar
 | `-O, --output-file` | current directory | Output directory, prefix, or JSONL file |
 | `-P, --plot` | off | Render haplotype table figure |
 | `-F, --plot-format` | `png` | `png`, `pdf`, `svg`, or `tiff` |
+| `--table-theme` | `detailed` | Table visual theme: `detailed` or `compact` |
 | `-z, --figsize` | auto | Figure size as `WIDTH,HEIGHT` |
 | `-p, --population` | off | Sample-to-population table |
 | `-e, --geo` | off | Sample coordinates for map plotting |
