@@ -56,3 +56,10 @@ style_preview/
 hap_network/
 tmp_demo/
 repo/
+
+# Build artifacts and temp
+dist_0_1_6/
+dist_0_1_7/
+tmp/
+.serena/
+pypitoken.txt
