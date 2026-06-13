@@ -8,8 +8,6 @@
 
 <!-- README-I18N:END -->
 
-`haplokit` 用于群体基因组学中的基因或区间级单倍型分析。它可以从 indexed VCF/BCF 中提取单倍型，结合 GFF3/GTF 注释基因结构，统计群体组成，绘制地理分布图和单倍型网络，并对单倍型分组之间的表型差异进行统计检验。
-
 ## 功能概览
 
 | 模块 | 用途 | 典型输出 |
@@ -27,7 +25,10 @@
 pip install haplokit
 ```
 
-源码构建需要 Linux/WSL、Python 3.10+、C++17 编译器、CMake 3.22+、`make`，以及 vendored htslib 构建所需的本地库。
+<details>
+<summary><b>源码构建要求</b></summary>
+
+Linux/WSL、Python 3.10+、C++17 编译器、CMake 3.22+、`make`，以及 vendored htslib 构建所需的本地库。
 
 Conda/mamba 示例：
 
@@ -71,13 +72,13 @@ export HAPLOKIT_CPP_BIN=/path/to/haplokit_cpp
 | `cannot find -llzma` | `xz` / `liblzma-dev` |
 | `cannot find -lz` | `zlib` / `zlib1g-dev` |
 
+</details>
+
 ## 快速开始
 
 ```bash
 haplokit view data/var.sorted.vcf.gz -r scaffold_1:4300-5000 --output-file out
 ```
-
-主要输出：
 
 | 文件 | 含义 |
 | --- | --- |
@@ -93,17 +94,28 @@ haplokit view in.vcf.gz -r chr1:1000-2000 --output-file out
 haplokit view in.vcf.gz -r chr1:1450 --output-file out_site
 ```
 
+<details>
+<summary><b>详细说明</b></summary>
+
 区间 selector 会按整个区域内的等位基因模式分组。单点 selector 会自动进入 site mode。严格区间模式下，带杂合或缺失调用的样本会被排除；如需保留缺失样本，可以使用 `--impute`。
+
+</details>
 
 ### 基因注释与单倍型表图
 
 ```bash
 haplokit view in.vcf.gz -r chr1:1000-2000 --gff genes.gff3 --plot --output-file out
+haplokit view in.vcf.gz -r chr1:1000-2000 --gff genes.gff3 --plot --table-theme compact --output-file out
 ```
+
+<details>
+<summary><b>详细说明</b></summary>
 
 提供 GFF3/GTF 文件时，图中会在表格上方绘制 pyGenomeTracks 风格的基因模型（backbone/内含子、CDS、UTR，末端箭头表示链方向），并用 SNP 刻度和引导线把每个变异连到对应的等位基因列，同时附带 CDS/UTR/intron 图例。不提供 `--gff` 时只绘制表格。输出还包括 `gff_ann_summary.tsv`。
 
 `--table-theme` 选择表格样式：`detailed`（默认，方形单元格、白色网格线）或 `compact`（扁宽单元格、无边贴合、更矮的表头）。基因模型在两种样式下通用。
+
+</details>
 
 <img src="data/figure/haplotype_table.png" alt="单倍型汇总表" width="800">
 
@@ -112,6 +124,9 @@ haplokit view in.vcf.gz -r chr1:1000-2000 --gff genes.gff3 --plot --output-file 
 ```bash
 haplokit view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --plot --output-file out
 ```
+
+<details>
+<summary><b>详细说明</b></summary>
 
 `popgroup.txt` 是两列 tab 分隔文件：
 
@@ -124,11 +139,16 @@ C13     landrace
 
 群体信息会进入输出表格的计数列，也会进入图中的群体统计。
 
+</details>
+
 ### 地理分布
 
 ```bash
 haplokit view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --geo data/sample_china_geo.txt --plot --output-file out
 ```
+
+<details>
+<summary><b>详细说明</b></summary>
 
 坐标文件为 tab 分隔：
 
@@ -140,13 +160,15 @@ C2    116.40     39.90
 
 使用 `--show-counts` 在地图饼图中心显示样本数，或使用 `--hide-counts` 显式隐藏。
 
-<img src="data/figure/haplotype_map_china.png" alt="单倍型地理分布图" width="600">
-
 `data/` 中附带世界地图示例资源：
 
 - `sample_world_geo.txt`
 - `world_countries.shp`, `world_countries.shx`, `world_countries.dbf`
 - `data/figure/haplotype_map_world.png`
+
+</details>
+
+<img src="data/figure/haplotype_map_china.png" alt="单倍型地理分布图" width="600">
 
 <img src="data/figure/haplotype_map_world.png" alt="世界单倍型地理分布图" width="600">
 
@@ -157,21 +179,22 @@ haplokit view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --network --plot --out
 haplokit view in.vcf.gz -r chr1:1000-2000 --network --network-method mjn --plot --output-file out
 ```
 
-支持的网络算法：
-
 | 方法 | 含义 |
 | --- | --- |
 | `msn` | Minimum spanning network |
 | `tcs` | Statistical parsimony network |
 | `mjn` | Median-joining network |
 
+<details>
+<summary><b>详细说明</b></summary>
+
 网络图遵循 PopART 风格：节点面积表示单倍型样本数，饼图扇区表示群体组成，边上的刻度表示突变步数，小黑点表示推断出的中间节点。
+
+</details>
 
 ![网络算法对比 - MSN / TCS / MJN](data/figure/haplotype_network_algorithms.png)
 
 ## 表型统计模块
-
-`haplokit phenotype` 将单倍型分组与数值表型表连接起来。单倍型输入可以是 `haplokit view` 输出的 `hapresult.tsv`，也可以是简单的两列 sample-to-haplotype 表。表型表第一列为样本 ID，其余被选中的列作为数值性状。
 
 ```bash
 haplokit phenotype \
@@ -203,7 +226,8 @@ haplokit phenotype \
 
 <img src="data/figure/phenotype_population_boxplot.png" alt="群体分层表型箱线图" width="900">
 
-### 统计场景
+<details>
+<summary><b>统计场景</b></summary>
 
 | 场景 | 检验分组 | result 中的两两比较 | 箱线图显著性标注 |
 | --- | --- | --- | --- |
@@ -214,7 +238,10 @@ haplokit phenotype \
 | 表型缺失值 | 按性状忽略非数值和缺失值 | 计数只包含数值样本 | `effective_n` 记录进入该分层的有效样本数 |
 | IQR 极值预处理 | 可选；在每个 `trait x population x haplotype` 内执行 Tukey IQR k=1.5 | 检验使用删除极值后的样本 | 图使用同一批过滤后的样本；summary 记录删除数量 |
 
-### 两两检验方法
+</details>
+
+<details>
+<summary><b>两两检验方法</b></summary>
 
 假设检验使用 `scipy.stats`。
 
@@ -225,7 +252,10 @@ haplokit phenotype \
 | `mannwhitney` | Mann-Whitney U test | 非参数秩检验 | 非 Tukey 检验默认 Bonferroni |
 | `tukey` | Tukey HSD | 多组 post-hoc 比较 | 直接使用 Tukey HSD p 值 |
 
-### 极值预处理
+</details>
+
+<details>
+<summary><b>极值预处理</b></summary>
 
 使用 `--remove-outliers` 在统计和绘图前删除极端表型值：
 
@@ -251,13 +281,18 @@ summary 输出中会记录预处理信息：
 | `outlier_method` | `none` 或 `iqr` |
 | `outlier_iqr_k` | IQR 倍数；启用时为 `1.5` |
 
-### 表型输出文件
+</details>
+
+<details>
+<summary><b>表型输出文件</b></summary>
 
 | 文件 | 内容 |
 | --- | --- |
 | `phenotype_stats.tsv` | 两两比较结果，包括分组样本数、均值、标准差、ANOVA、两两统计量、原始 P 值、校正后 P 值、显著性标签和 `effective_n` |
 | summary TSV (`--summary-output`) | 每个性状、群体、单倍型的 summary 统计；启用极值预处理时记录删除数量 |
 | boxplot (`--plot-box`) | 对一个选定性状绘制箱线图，使用与统计结果一致的过滤、分组和比较逻辑 |
+
+</details>
 
 ## 其他流程
 
@@ -267,6 +302,9 @@ summary 输出中会记录预处理信息：
 haplokit view in.vcf.gz -R regions.bed --output-file out_batch
 ```
 
+<details>
+<summary><b>详细说明</b></summary>
+
 `regions.bed` 至少包含三列 tab 分隔字段：
 
 ```text
@@ -275,6 +313,8 @@ chr2  5000  6000
 ```
 
 每个 BED 行独立处理。输出文件按区间 suffix 命名，例如 `_chr1_1000_2000`。
+
+</details>
 
 ### 近似分组
 
@@ -364,7 +404,8 @@ haplokit phenotype -H <hapresult.tsv|sample_hap.tsv> -P <phenotype.tsv|phenotype
 
 `--plot-box` 需要恰好选择一个性状。
 
-## 后端
+<details>
+<summary><b>后端</b></summary>
 
 后端二进制：`haplokit_cpp`。
 
@@ -380,13 +421,18 @@ haplokit phenotype -H <hapresult.tsv|sample_hap.tsv> -P <phenotype.tsv|phenotype
 - [htslib](https://github.com/samtools/htslib)：indexed VCF/BCF 读取
 - [gffsub](https://github.com/WWz33/gffsub)：GFF3/GTF 解析和区间查询
 
-## 开发
+</details>
+
+<details>
+<summary><b>开发</b></summary>
 
 ```bash
 cmake -S . -B build-wsl && cmake --build build-wsl -j12
 HAPLOKIT_CPP_BIN=$PWD/build-wsl/haplokit_cpp python -m pytest -q tests/python
 ctest --test-dir build-wsl --output-on-failure
 ```
+
+</details>
 
 ## 参考
 

@@ -8,8 +8,6 @@ Command-line haplotype analysis for indexed VCF/BCF data, with a C++ data plane 
 
 <!-- README-I18N:END -->
 
-`haplokit` is designed for gene- or interval-level haplotype analysis in population genomic studies. It reads indexed VCF/BCF files, builds haplotype tables, annotates variants with GFF3/GTF gene models, summarizes population composition, renders maps and haplotype networks, and tests phenotype differences between haplotype groups.
-
 ## Capabilities
 
 | Module | Purpose | Typical output |
@@ -27,7 +25,10 @@ Command-line haplotype analysis for indexed VCF/BCF data, with a C++ data plane 
 pip install haplokit
 ```
 
-Source builds require Linux/WSL, Python 3.10+, a C++17 compiler, CMake 3.22+, `make`, and native libraries used by the vendored htslib build.
+<details>
+<summary><b>Source build requirements</b></summary>
+
+Linux/WSL, Python 3.10+, C++17 compiler, CMake 3.22+, `make`, and native libraries used by the vendored htslib build.
 
 Conda/mamba example:
 
@@ -71,13 +72,13 @@ Common linker errors map to missing native libraries:
 | `cannot find -llzma` | `xz` / `liblzma-dev` |
 | `cannot find -lz` | `zlib` / `zlib1g-dev` |
 
+</details>
+
 ## Quick Start
 
 ```bash
 haplokit view data/var.sorted.vcf.gz -r scaffold_1:4300-5000 --output-file out
 ```
-
-Main outputs:
 
 | File | Meaning |
 | --- | --- |
@@ -93,21 +94,28 @@ haplokit view in.vcf.gz -r chr1:1000-2000 --output-file out
 haplokit view in.vcf.gz -r chr1:1450 --output-file out_site
 ```
 
+<details>
+<summary><b>Details</b></summary>
+
 Interval selectors group by the full allele pattern across the region. Single-position selectors automatically use site mode. In strict region mode, samples with heterozygous or missing calls are excluded unless `--impute` is used.
+
+</details>
 
 ### Gene Annotation and Haplotype Table Figure
 
 ```bash
 haplokit view in.vcf.gz -r chr1:1000-2000 --gff genes.gff3 --plot --output-file out
+haplokit view in.vcf.gz -r chr1:1000-2000 --gff genes.gff3 --plot --table-theme compact --output-file out
 ```
+
+<details>
+<summary><b>Details</b></summary>
 
 When a GFF3/GTF file is supplied, the figure draws a pyGenomeTracks-style gene model above the table (backbone/introns, CDS, UTR, and a terminal arrow for strand), with SNP ticks and guide lines connecting each variant to its allele column, plus a CDS/UTR/intron legend. Without `--gff` only the table is drawn. Output also includes `gff_ann_summary.tsv`.
 
 `--table-theme` selects the table look: `detailed` (default; square cells with white gridlines) or `compact` (flat wide cells, flush, shorter header). The gene model is shared by both themes.
 
-```bash
-haplokit view in.vcf.gz -r chr1:1000-2000 --gff genes.gff3 --plot --table-theme compact --output-file out
-```
+</details>
 
 <img src="data/figure/haplotype_table.png" alt="Haplotype summary table" width="800">
 
@@ -116,6 +124,9 @@ haplokit view in.vcf.gz -r chr1:1000-2000 --gff genes.gff3 --plot --table-theme 
 ```bash
 haplokit view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --plot --output-file out
 ```
+
+<details>
+<summary><b>Details</b></summary>
 
 `popgroup.txt` is a two-column tab-separated file:
 
@@ -128,11 +139,16 @@ C13     landrace
 
 Population groups are shown as per-haplotype count columns in the output table and as grouped counts in the figure.
 
+</details>
+
 ### Geographic Distribution
 
 ```bash
 haplokit view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --geo data/sample_china_geo.txt --plot --output-file out
 ```
+
+<details>
+<summary><b>Details</b></summary>
 
 Coordinate input is tab-separated:
 
@@ -144,13 +160,15 @@ C2    116.40     39.90
 
 Use `--show-counts` to draw sample-count labels at map pie centers, or `--hide-counts` to keep them hidden.
 
-<img src="data/figure/haplotype_map_china.png" alt="Haplotype geographic distribution" width="600">
-
 World map example resources are bundled under `data/`:
 
 - `sample_world_geo.txt`
 - `world_countries.shp`, `world_countries.shx`, `world_countries.dbf`
 - `data/figure/haplotype_map_world.png`
+
+</details>
+
+<img src="data/figure/haplotype_map_china.png" alt="Haplotype geographic distribution" width="600">
 
 <img src="data/figure/haplotype_map_world.png" alt="World haplotype geographic distribution" width="600">
 
@@ -161,21 +179,22 @@ haplokit view in.vcf.gz -r chr1:1000-2000 -p popgroup.txt --network --plot --out
 haplokit view in.vcf.gz -r chr1:1000-2000 --network --network-method mjn --plot --output-file out
 ```
 
-Supported network methods:
-
 | Method | Meaning |
 | --- | --- |
 | `msn` | Minimum spanning network |
 | `tcs` | Statistical parsimony network |
 | `mjn` | Median-joining network |
 
+<details>
+<summary><b>Details</b></summary>
+
 Network figures follow PopART conventions: node area reflects haplotype count, pie slices show population composition, edge ticks show mutation steps, and small black vertices indicate inferred intermediates.
+
+</details>
 
 ![Network algorithms comparison - MSN / TCS / MJN](data/figure/haplotype_network_algorithms.png)
 
 ## Phenotype Statistics
-
-`haplokit phenotype` joins haplotype assignments with numeric phenotype traits. Input haplotypes can be the `hapresult.tsv` produced by `haplokit view` or a simple two-column sample-to-haplotype table. The phenotype table uses the first column as sample ID and all remaining selected columns as numeric traits.
 
 ```bash
 haplokit phenotype \
@@ -207,7 +226,8 @@ haplokit phenotype \
 
 <img src="data/figure/phenotype_population_boxplot.png" alt="Population-stratified phenotype boxplot" width="900">
 
-### Statistical Scenarios
+<details>
+<summary><b>Statistical scenarios</b></summary>
 
 | Scenario | Grouping used for tests | Pairwise comparison reported | Boxplot annotation |
 | --- | --- | --- | --- |
@@ -218,7 +238,10 @@ haplokit phenotype \
 | Missing phenotype values | Non-numeric or missing values are ignored per trait | Counts reflect only numeric observations | `effective_n` records the usable sample count |
 | IQR outlier preprocessing | Optional Tukey IQR k=1.5 within each `trait x population x haplotype` group | Tests use records remaining after outlier removal | Plot uses the same filtered records; summary records removed counts |
 
-### Pairwise Test Methods
+</details>
+
+<details>
+<summary><b>Pairwise test methods</b></summary>
 
 Hypothesis tests use `scipy.stats`.
 
@@ -229,7 +252,10 @@ Hypothesis tests use `scipy.stats`.
 | `mannwhitney` | Mann-Whitney U test | Non-parametric rank comparison | Bonferroni by default |
 | `tukey` | Tukey HSD | Multi-group post-hoc comparison | Uses Tukey HSD p-values directly |
 
-### Outlier Preprocessing
+</details>
+
+<details>
+<summary><b>Outlier preprocessing</b></summary>
 
 Use `--remove-outliers` to remove extreme phenotype values before statistics and boxplot rendering:
 
@@ -255,13 +281,18 @@ Summary output records preprocessing with:
 | `outlier_method` | `none` or `iqr` |
 | `outlier_iqr_k` | IQR multiplier, currently `1.5` when enabled |
 
-### Phenotype Output Files
+</details>
+
+<details>
+<summary><b>Phenotype output files</b></summary>
 
 | File | Content |
 | --- | --- |
 | `phenotype_stats.tsv` | Pairwise comparison rows with group counts, means, standard deviations, ANOVA result, pairwise statistic, raw p-value, adjusted p-value, significance label, and `effective_n` |
 | summary TSV (`--summary-output`) | Per-trait/per-population/per-haplotype summary statistics, including outlier accounting when preprocessing is enabled |
 | boxplot (`--plot-box`) | One selected trait visualized with the same filtering, grouping, and comparison logic used by the statistics |
+
+</details>
 
 ## Other Workflows
 
@@ -271,6 +302,9 @@ Summary output records preprocessing with:
 haplokit view in.vcf.gz -R regions.bed --output-file out_batch
 ```
 
+<details>
+<summary><b>Details</b></summary>
+
 `regions.bed` requires at least three tab-separated columns:
 
 ```text
@@ -279,6 +313,8 @@ chr2  5000  6000
 ```
 
 Each BED row is processed independently. Output files are named with a region suffix such as `_chr1_1000_2000`.
+
+</details>
 
 ### Approximate Grouping
 
@@ -368,7 +404,8 @@ haplokit phenotype -H <hapresult.tsv|sample_hap.tsv> -P <phenotype.tsv|phenotype
 
 `--plot-box` requires exactly one selected trait.
 
-## Backend
+<details>
+<summary><b>Backend</b></summary>
 
 Backend binary: `haplokit_cpp`.
 
@@ -384,13 +421,18 @@ Native components:
 - [htslib](https://github.com/samtools/htslib) for indexed VCF/BCF reading
 - [gffsub](https://github.com/WWz33/gffsub) for GFF3/GTF parsing and interval queries
 
-## Development
+</details>
+
+<details>
+<summary><b>Development</b></summary>
 
 ```bash
 cmake -S . -B build-wsl && cmake --build build-wsl -j12
 HAPLOKIT_CPP_BIN=$PWD/build-wsl/haplokit_cpp python -m pytest -q tests/python
 ctest --test-dir build-wsl --output-on-failure
 ```
+
+</details>
 
 ## References
 
