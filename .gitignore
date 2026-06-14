@@ -63,3 +63,9 @@ dist_0_1_7/
 tmp/
 .serena/
 pypitoken.txt
+
+# Backup files
+*.bak
+
+# CodeGraph
+.codegraph/
