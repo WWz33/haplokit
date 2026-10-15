@@ -55,14 +55,14 @@ pip install haplokit
 - Linux/WSL
 - Python 3.10+
 - C++17 compiler
-- CMake 3.22+
-- `make`
+- GNU Make
+- `git` (source checkout only, for the `deps/` submodules)
 - Native libraries for htslib
 
 #### Conda/mamba
 
 ```bash
-mamba install -c conda-forge compilers make cmake libcurl zlib bzip2 xz
+mamba install -c conda-forge compilers make libcurl zlib bzip2 xz
 python -m pip install --no-cache-dir haplokit
 ```
 
@@ -70,29 +70,28 @@ python -m pip install --no-cache-dir haplokit
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y build-essential make cmake zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
+sudo apt-get install -y build-essential zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
 python -m pip install --no-cache-dir haplokit
 ```
 
 #### From source checkout
 
+The C++ backend builds from the `deps/gffsub` and `deps/htslib` submodules, so clone with `--recursive`:
+
 ```bash
+git clone --recursive https://github.com/WWz33/haplokit.git
+cd haplokit
 pip install .
 ```
 
-#### Development install
+If the checkout already exists without submodules:
 
 ```bash
-pip install -e .
+git submodule update --init --recursive
+pip install .
 ```
 
-#### Custom backend path
-
-If the C++ backend is built outside the package, point the CLI to it:
-
-```bash
-export HAPLOKIT_CPP_BIN=/path/to/haplokit_cpp
-```
+A shallow clone (`--depth 1`) works; the build does not require submodule tags.
 
 #### Troubleshooting linker errors
 
@@ -530,7 +529,7 @@ Backend discovery order:
 1. `HAPLOKIT_CPP_BIN` environment variable
 2. Packaged binary: `haplokit/_bin/haplokit_cpp`
 3. Local builds: `build-wsl/haplokit_cpp`, `build/haplokit_cpp`, `build-haplokit-python/haplokit_cpp`
-4. Source-tree CMake build fallback
+4. Source-tree make build fallback
 
 Native components:
 
@@ -543,14 +542,17 @@ Native components:
 <summary><b>Development</b></summary>
 
 ```bash
-# Build C++ backend
-cmake -S . -B build-wsl && cmake --build build-wsl -j12
+# Fetch the deps/gffsub and deps/htslib submodules
+git submodule update --init --recursive
 
-# Run Python tests
-HAPLOKIT_CPP_BIN=$PWD/build-wsl/haplokit_cpp python -m pytest -q tests/python
+# Build the C++ backend
+make build
 
-# Run C++ tests
-ctest --test-dir build-wsl --output-on-failure
+# Build and run the C++ and Python test suites
+make test
+
+# Remove build artifacts
+make clean
 ```
 
 </details>

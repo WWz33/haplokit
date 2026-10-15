@@ -25,8 +25,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential \
-            cmake \
-            pkg-config \
             libbz2-dev \
             liblzma-dev \
             libcurl4-openssl-dev \
@@ -37,19 +35,15 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install pytest pysam matplotlib scipy build
 
-      - name: Build vendored backend
-        run: |
-          chmod +x deps/htslib/version.sh deps/htslib/hts_probe_cc.sh
-          cmake -S . -B build-wsl
-          cmake --build build-wsl --parallel
+      - name: Build C++ backends
+        run: make -j"$(nproc)" build
+
+      - name: Run C++ tests
+        run: make test-cpp
 
       - name: Run Python tests
         run: |
           HAPLOKIT_CPP_BIN=$PWD/build-wsl/haplokit_cpp python -m pytest -q tests/python
-
-      - name: Run C++ tests
-        run: |
-          ctest --test-dir build-wsl --output-on-failure
 
       - name: Build source distribution
         run: |

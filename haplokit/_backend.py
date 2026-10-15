@@ -51,26 +51,8 @@ def backend_search_paths(repo_root: Path, package_dir: Path, env_path: str | Non
     return candidates
 
 
-def _cmake_cache_home_directory(build_dir: Path) -> str | None:
-    cache = build_dir / "CMakeCache.txt"
-    if not cache.exists():
-        return None
-    for line in cache.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.startswith("CMAKE_HOME_DIRECTORY:INTERNAL="):
-            return line.split("=", 1)[1]
-    return None
-
-
-def compatible_build_dir(repo_root: Path, preferred_build_dir: Path) -> Path:
-    cache_home = _cmake_cache_home_directory(preferred_build_dir)
-    if cache_home is None:
-        return preferred_build_dir
-
-    current_home = str(repo_root)
-    if cache_home.replace("\\", "/") == current_home.replace("\\", "/"):
-        return preferred_build_dir
-
-    return repo_root / PYTHON_BUILD_DIR
+def _make_base_command() -> list[str]:
+    return ["make"]
 
 
 def _format_failed_command(cmd: list[str], completed: subprocess.CompletedProcess[str]) -> str:
@@ -79,28 +61,6 @@ def _format_failed_command(cmd: list[str], completed: subprocess.CompletedProces
         output = output[-4000:]
     detail = output or f"command exited with code {completed.returncode}"
     return f"{' '.join(cmd)} failed:\n{detail}"
-
-
-def _cmake_base_command() -> list[str]:
-    try:
-        import cmake  # type: ignore[import-not-found]
-    except Exception:
-        return ["cmake"]
-
-    bin_dir = getattr(cmake, "CMAKE_BIN_DIR", None)
-    if bin_dir:
-        candidate = Path(bin_dir) / ("cmake.exe" if os.name == "nt" else "cmake")
-        if candidate.exists():
-            return [str(candidate)]
-
-    package_file = getattr(cmake, "__file__", None)
-    if package_file:
-        package_dir = Path(package_file).resolve().parent
-        for candidate in executable_candidates(package_dir / "data" / "bin", "cmake"):
-            if candidate.exists():
-                return [str(candidate)]
-
-    return ["cmake"]
 
 
 def _prepend_env_paths(env: dict[str, str], name: str, paths: list[Path]) -> None:
@@ -123,7 +83,6 @@ def _native_build_environment() -> dict[str, str]:
     prefix = Path(conda_prefix)
     _prepend_env_paths(env, "CPATH", [prefix / "include"])
     _prepend_env_paths(env, "LIBRARY_PATH", [prefix / "lib"])
-    _prepend_env_paths(env, "CMAKE_PREFIX_PATH", [prefix])
     _prepend_env_paths(env, "PKG_CONFIG_PATH", [prefix / "lib" / "pkgconfig", prefix / "share" / "pkgconfig"])
     _add_native_runtime_paths(env, prefix)
     return env
@@ -162,19 +121,14 @@ def _run_checked(cmd: list[str], repo_root: Path) -> None:
 
 def build_cpp_backends(repo_root: Path, build_dir: Path | None = None) -> dict[str, Path]:
     repo_root = repo_root.resolve()
-    build_dir = compatible_build_dir(repo_root, (build_dir or repo_root / "build-wsl").resolve())
-    if not (repo_root / "CMakeLists.txt").exists():
+    if not (repo_root / "Makefile").exists():
         raise CppBackendBuildError(
-            f"cannot auto-build {CPP_BACKEND}: CMakeLists.txt not found at {repo_root}"
+            f"cannot auto-build {CPP_BACKEND}: Makefile not found at {repo_root}"
         )
 
-    cmake_cmd = _cmake_base_command()
+    build_dir = (build_dir or repo_root / "build-wsl").resolve()
     _run_checked(
-        [*cmake_cmd, "-S", str(repo_root), "-B", str(build_dir), "-DCMAKE_BUILD_TYPE=Release"],
-        repo_root,
-    )
-    _run_checked(
-        [*cmake_cmd, "--build", str(build_dir), "--parallel", str(os.cpu_count() or 1)],
+        _make_base_command() + [f"BUILD_DIR={build_dir}", "build"],
         repo_root,
     )
 
@@ -202,7 +156,7 @@ def find_haplokit_cpp(repo_root: Path, package_dir: Path, auto_build: bool = Tru
         if candidate.exists():
             return candidate
 
-    if auto_build and (repo_root / "CMakeLists.txt").exists():
+    if auto_build and (repo_root / "Makefile").exists():
         build_cpp_backends(repo_root, repo_root / "build-wsl")
         for candidate in backend_search_paths(repo_root, package_dir, env_path):
             if candidate.exists():

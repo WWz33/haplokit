@@ -127,7 +127,7 @@ def compute_network(
 
     raise RuntimeError(
         "haplokit_network_backend not found and Python fallback disabled. "
-        "Set HAPLOKIT_NETWORK_BIN or rebuild with CMake."
+        "Set HAPLOKIT_NETWORK_BIN or rebuild with make."
     )
 
 

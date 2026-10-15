@@ -17,7 +17,6 @@ import haplokit.cli as cli_module
 from haplokit._backend import (
     CppBackendBuildError,
     _native_build_environment,
-    compatible_build_dir,
     find_haplokit_cpp,
     native_runtime_environment,
 )
@@ -28,7 +27,6 @@ def test_pyproject_declares_haplokit_console_entrypoint_and_linux_scope() -> Non
     assert 'name = "haplokit"' in pyproject
     assert 'haplokit = "haplokit.cli:main"' in pyproject
     assert "Operating System :: POSIX :: Linux" in pyproject
-    assert '"cmake>=3.22"' in pyproject
 
 
 def test_setup_py_defines_cpp_build_hook() -> None:
@@ -79,14 +77,14 @@ def test_find_haplokit_cpp_auto_builds_source_tree(monkeypatch: pytest.MonkeyPat
     package_dir = repo_root / "haplokit"
     build_dir = repo_root / "build-wsl"
     package_dir.mkdir(parents=True)
-    (repo_root / "CMakeLists.txt").write_text("cmake_minimum_required(VERSION 3.22)\n", encoding="utf-8")
+    (repo_root / "Makefile").write_text("build:\n\ttrue\n", encoding="utf-8")
     monkeypatch.delenv("HAPLOKIT_CPP_BIN", raising=False)
 
     calls: list[list[str]] = []
 
     def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         calls.append(cmd)
-        if cmd[:2] == ["cmake", "--build"]:
+        if cmd[0] == "make" and cmd[-1] == "build":
             build_dir.mkdir()
             (build_dir / "haplokit_cpp").write_text("", encoding="utf-8")
         return subprocess.CompletedProcess(cmd, 0, "", "")
@@ -94,16 +92,16 @@ def test_find_haplokit_cpp_auto_builds_source_tree(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr("haplokit._backend.subprocess.run", fake_run)
 
     assert find_haplokit_cpp(repo_root, package_dir) == build_dir / "haplokit_cpp"
-    assert "-S" in calls[0]
-    assert str(repo_root.resolve()) in calls[0]
-    assert "--build" in calls[1]
+    assert calls[0][0] == "make"
+    assert calls[0][-1] == "build"
+    assert f"BUILD_DIR={build_dir}" in calls[0]
 
 
-def test_find_haplokit_cpp_reports_cmake_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_find_haplokit_cpp_reports_build_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     package_dir = repo_root / "haplokit"
     package_dir.mkdir(parents=True)
-    (repo_root / "CMakeLists.txt").write_text("cmake_minimum_required(VERSION 3.22)\n", encoding="utf-8")
+    (repo_root / "Makefile").write_text("build:\n\tfalse\n", encoding="utf-8")
     monkeypatch.delenv("HAPLOKIT_CPP_BIN", raising=False)
 
     def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
@@ -129,7 +127,6 @@ def test_native_build_environment_exposes_conda_native_paths(
 
     assert env["CPATH"].split(os.pathsep)[0] == str(conda_prefix / "include")
     assert env["LIBRARY_PATH"].split(os.pathsep)[:2] == [str(conda_prefix / "lib"), "/existing/lib"]
-    assert env["CMAKE_PREFIX_PATH"].split(os.pathsep)[0] == str(conda_prefix)
     assert env["PKG_CONFIG_PATH"].split(os.pathsep)[:2] == [
         str(conda_prefix / "lib" / "pkgconfig"),
         str(conda_prefix / "share" / "pkgconfig"),
@@ -180,18 +177,6 @@ def test_cli_backend_subprocess_uses_native_runtime_environment(
         assert str(conda_prefix / "bin") in env["PATH"].split(os.pathsep)
     else:
         assert env["LD_LIBRARY_PATH"].split(os.pathsep)[0] == str(conda_prefix / "lib")
-
-
-def test_incompatible_cmake_cache_uses_python_build_dir(tmp_path: Path) -> None:
-    repo_root = (tmp_path / "repo").resolve()
-    build_dir = repo_root / "build-wsl"
-    build_dir.mkdir(parents=True)
-    (build_dir / "CMakeCache.txt").write_text(
-        "CMAKE_HOME_DIRECTORY:INTERNAL=/old/source/tree\n",
-        encoding="utf-8",
-    )
-
-    assert compatible_build_dir(repo_root, build_dir) == repo_root / "build-haplokit-python"
 
 
 def test_vendored_htscodecs_version_header_is_present_for_sdist_builds() -> None:

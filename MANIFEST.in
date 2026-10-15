@@ -1,14 +1,13 @@
 include README.md
 include README.zh-CN.md
 include LICENSE
-include CMakeLists.txt
+include Makefile
 include pyproject.toml
 include setup.py
-include Makefile
 
 recursive-include haplokit *.py
-recursive-include cmake *.cmake
-recursive-include deps/gffsub src/*.cpp src/*.hpp LICENSE CMakeLists.txt Makefile
+recursive-include deps/gffsub/src *.cpp *.hpp
+recursive-include deps/gffsub *.md LICENSE Makefile
 recursive-include deps/nlohmann *.hpp
 recursive-include deps/htslib *
 recursive-include src/cpp *.cpp *.h

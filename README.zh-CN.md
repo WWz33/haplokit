@@ -55,14 +55,14 @@ pip install haplokit
 - Linux/WSL
 - Python 3.10+
 - C++17 编译器
-- CMake 3.22+
-- `make`
+- GNU Make
+- `git`（仅源码构建需要，用于拉取 `deps/` 下的 submodule）
 - htslib 所需的本地库
 
 #### Conda/mamba
 
 ```bash
-mamba install -c conda-forge compilers make cmake libcurl zlib bzip2 xz
+mamba install -c conda-forge compilers make libcurl zlib bzip2 xz
 python -m pip install --no-cache-dir haplokit
 ```
 
@@ -70,29 +70,28 @@ python -m pip install --no-cache-dir haplokit
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y build-essential make cmake zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
+sudo apt-get install -y build-essential zlib1g-dev libbz2-dev liblzma-dev libcurl4-openssl-dev
 python -m pip install --no-cache-dir haplokit
 ```
 
 #### 从源码目录安装
 
+C++ 后端由 `deps/gffsub` 和 `deps/htslib` 两个 submodule 构建，克隆时需要 `--recursive`：
+
 ```bash
+git clone --recursive https://github.com/WWz33/haplokit.git
+cd haplokit
 pip install .
 ```
 
-#### 开发模式安装
+如果已有克隆但未拉取 submodule：
 
 ```bash
-pip install -e .
+git submodule update --init --recursive
+pip install .
 ```
 
-#### 自定义后端路径
-
-如果 C++ 后端构建在其他位置，可以显式指定：
-
-```bash
-export HAPLOKIT_CPP_BIN=/path/to/haplokit_cpp
-```
+浅克隆（`--depth 1`）可用，构建不依赖 submodule 的 tag。
 
 #### 常见链接错误排查
 
@@ -530,7 +529,7 @@ haplokit phenotype -H <hapresult.tsv|sample_hap.tsv> -P <phenotype.tsv|phenotype
 1. `HAPLOKIT_CPP_BIN` 环境变量
 2. 包内二进制：`haplokit/_bin/haplokit_cpp`
 3. 本地构建：`build-wsl/haplokit_cpp`, `build/haplokit_cpp`, `build-haplokit-python/haplokit_cpp`
-4. 源码树 CMake 构建兜底
+4. 源码树 make 构建兜底
 
 本地组件：
 
@@ -543,14 +542,17 @@ haplokit phenotype -H <hapresult.tsv|sample_hap.tsv> -P <phenotype.tsv|phenotype
 <summary><b>开发</b></summary>
 
 ```bash
+# 拉取 deps/gffsub 和 deps/htslib 两个 submodule
+git submodule update --init --recursive
+
 # 构建 C++ 后端
-cmake -S . -B build-wsl && cmake --build build-wsl -j12
+make build
 
-# 运行 Python 测试
-HAPLOKIT_CPP_BIN=$PWD/build-wsl/haplokit_cpp python -m pytest -q tests/python
+# 构建并运行 C++ 与 Python 测试
+make test
 
-# 运行 C++ 测试
-ctest --test-dir build-wsl --output-on-failure
+# 清理构建产物
+make clean
 ```
 
 </details>
