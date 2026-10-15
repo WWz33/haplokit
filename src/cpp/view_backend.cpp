@@ -314,6 +314,9 @@ std::string serialize_view_result_json(const ViewResult& result) {
     json sites = json::array();
     for (const auto& site : result.sites) {
         sites.push_back({{"allele", site.allele}, {"chrom", site.chrom}, {"pos", site.pos}});
+        if (!site.cds.empty()) {
+            sites.back()["cds"] = site.cds;
+        }
     }
     j["sites"] = sites;
 

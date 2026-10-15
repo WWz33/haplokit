@@ -24,6 +24,7 @@ Command-line haplotype analysis for indexed VCF/BCF data, with a C++ data plane 
   - [BED Batch Processing](#bed-batch-processing)
   - [Approximate Grouping](#approximate-grouping)
   - [Sample Subset and Missing-Call Imputation](#sample-subset-and-missing-call-imputation)
+  - [Coding Effect Annotation](#coding-effect-annotation)
 - [Command Reference](#command-reference)
 - [Input/Output Formats](#inputoutput-formats)
 - [Citation](#citation)
@@ -389,6 +390,14 @@ haplokit view in.vcf.gz --gene-id Glyma.01G001000 --gff genes.gff3 \
   --upstream 2000 --downstream 1000 --strand-aware --output-file out
 ```
 
+### Coding Effect Annotation
+
+```bash
+haplokit view in.vcf.gz -r chr1:1000-2000 --gff genes.gff3 --cds genes.cds.fa --output-file out
+```
+
+`--cds` takes a spliced CDS FASTA (for example `gffread -x` output) and writes `cds_anno.tsv`: for every SNV in the region, the CDS coordinate (`c.` position) and the amino acid change per transcript. Requires `--gff3`; FASTA headers must be the GFF3 mRNA IDs, and the CDS sequence must match the annotation so the reference base can be cross-checked. Indels and sites outside any CDS are left as `-`.
+
 ## Command Reference
 
 ### `haplokit view`
@@ -421,6 +430,7 @@ haplokit view <input.vcf.gz|input.bcf> (-r <region> | -R <regions.bed> | -t <tar
 | Option | Default | Description |
 | --- | --- | --- |
 | `-g, --gff3, --gff` | off | GFF3/GTF file for gene selectors and annotation |
+| `--cds` | off | Spliced CDS FASTA for coding-effect annotation; requires `--gff3` |
 | `-u, --upstream` | `0` | Upstream bases added to gene selectors |
 | `-d, --downstream` | `0` | Downstream bases added to gene selectors |
 | `-a, --strand-aware` | off | Apply upstream/downstream relative to gene strand |
@@ -465,6 +475,7 @@ haplokit view <input.vcf.gz|input.bcf> (-r <region> | -R <regions.bed> | -t <tar
 - Exactly one selector is required: `-r`, `-R`, `-t`, `-T`, `--gene-id`, or `--gene-list`
 - Targets supplied with `-t` or `-T` must all be on the same chromosome
 - `--gene-id` and `--gene-list` require `--gff/--gff3`
+- `--cds` requires `--gff3` and expects one sequence per transcript, with the FASTA header equal to the mRNA ID used in the GFF3
 
 ### `haplokit phenotype`
 
@@ -571,6 +582,7 @@ make clean
 | Population map | `.txt` | Sample-to-population mapping | 2 tab-separated columns: sample ID, population name |
 | Phenotype table | `.csv`, `.tsv` | Trait values | First column: sample ID; remaining columns: numeric traits |
 | Gene list | `.txt` | Gene IDs | One gene ID per line |
+| CDS FASTA | `.fa`, `.fasta` | Spliced CDS per transcript | Header must equal the GFF3 mRNA ID; use `--cds` |
 
 ### Output Formats
 
@@ -608,6 +620,19 @@ Gene annotation summary (only if `--gff` provided).
 | `Feature` | string | Feature type (CDS, 5'UTR, 3'UTR, intron, upstream, downstream, intergenic) |
 | `Gene` | string | Gene ID |
 | `Distance` | integer | Distance to feature (0 if within) |
+
+#### `cds_anno.tsv`
+
+Coding-effect annotation for variants in the selected region (only if `--cds` provided). One data column per variant, aligned with the `POS` row; multi-allelic sites repeat the transcript with each ALT allele.
+
+| Row | Type | Description |
+| --- | --- | --- |
+| `CHR` | string | Chromosome of the selected region |
+| `POS` | integer | Variant positions |
+| `CDS_POS` | string | CDS coordinate and substitution per transcript, e.g. `test1G0387.1:c.412G>A`; `-` when the site is outside every CDS |
+| `CDS_VAR` | string | Protein change and effect per transcript, e.g. `test1G0387.1:p.Ala138Thr(missense_variant)`; `-` when unannotated |
+
+Effects follow Sequence Ontology terms as reported by SnpEff: `synonymous_variant`, `missense_variant`, `stop_gained`, `stop_lost`, `stop_retained_variant`, `start_lost`. Protein changes follow its HGVS conventions (`p.(=)`, `p.Ter5LysextTer?`, `p.Met1?`). The translation uses the standard genetic code (NCBI table 1). Only single-base substitutions are annotated; indels are left as `-`.
 
 #### `phenotype_stats.tsv`
 

@@ -24,6 +24,7 @@
   - [BED 批量处理](#bed-批量处理)
   - [近似分组](#近似分组)
   - [样本子集与缺失填补](#样本子集与缺失填补)
+  - [编码区效应注释](#编码区效应注释)
 - [参数速查](#参数速查)
 - [输入/输出格式](#输入输出格式)
 - [引用](#引用)
@@ -389,6 +390,14 @@ haplokit view in.vcf.gz --gene-id Glyma.01G001000 --gff genes.gff3 \
   --upstream 2000 --downstream 1000 --strand-aware --output-file out
 ```
 
+### 编码区效应注释
+
+```bash
+haplokit view in.vcf.gz -r chr1:1000-2000 --gff genes.gff3 --cds genes.cds.fa --output-file out
+```
+
+`--cds` 接收拼接后的 CDS FASTA（例如 `gffread -x` 的输出），生成 `cds_anno.tsv`：区域内每个 SNP 在每个转录本上的 CDS 坐标（`c.` 位置）和氨基酸变化。需配合 `--gff3`；FASTA 的 header 必须是 GFF3 中的 mRNA ID，且 CDS 序列需与注释一致，以便校验参考碱基。indel 与不在任何 CDS 内的位点记为 `-`。
+
 ## 参数速查
 
 ### `haplokit view`
@@ -421,6 +430,7 @@ haplokit view <input.vcf.gz|input.bcf> (-r <region> | -R <regions.bed> | -t <tar
 | 参数 | 默认 | 说明 |
 | --- | --- | --- |
 | `-g, --gff3, --gff` | 关闭 | 用于 gene selector 和注释的 GFF3/GTF |
+| `--cds` | off | 拼接后的 CDS FASTA，用于编码区效应注释；需配合 `--gff3` |
 | `-u, --upstream` | `0` | gene selector 上游扩展长度 |
 | `-d, --downstream` | `0` | gene selector 下游扩展长度 |
 | `-a, --strand-aware` | 关闭 | 按基因链方向解释 upstream/downstream |
@@ -465,6 +475,7 @@ haplokit view <input.vcf.gz|input.bcf> (-r <region> | -R <regions.bed> | -t <tar
 - 必须且只能提供一个 selector：`-r`、`-R`、`-t`、`-T`、`--gene-id` 或 `--gene-list`
 - 通过 `-t` 或 `-T` 提供的 targets 必须位于同一条染色体
 - `--gene-id` 和 `--gene-list` 需要 `--gff/--gff3`
+- `--cds` 需要 `--gff3`，FASTA 每个转录本一条序列，header 必须与 GFF3 中的 mRNA ID 完全一致
 
 ### `haplokit phenotype`
 
@@ -571,6 +582,7 @@ make clean
 | 群体映射表 | `.txt` | 样本到群体的映射 | 2 列 tab 分隔：样本 ID, 群体名称 |
 | 表型表 | `.csv`, `.tsv` | 性状值 | 第一列：样本 ID；其余列：数值性状 |
 | 基因列表 | `.txt` | 基因 ID | 每行一个基因 ID |
+| CDS FASTA | `.fa`, `.fasta` | 每个转录本拼接后的 CDS | header 必须与 GFF3 的 mRNA ID 一致；配合 `--cds` 使用 |
 
 ### 输出格式
 
@@ -608,6 +620,19 @@ make clean
 | `Feature` | string | 特征类型（CDS, 5'UTR, 3'UTR, intron, upstream, downstream, intergenic） |
 | `Gene` | string | 基因 ID |
 | `Distance` | integer | 到特征的距离（0 表示在特征内） |
+
+#### `cds_anno.tsv`
+
+所选区域内变异的编码区效应注释（仅在提供 `--cds` 时生成）。每个变异占一列，与 `POS` 行对齐；同一位点有多个 ALT 等位基因时，逐个 ALT 重复该转录本。
+
+| 行名 | 类型 | 说明 |
+| --- | --- | --- |
+| `CHR` | string | 所选区域的染色体 |
+| `POS` | integer | 变异位置 |
+| `CDS_POS` | string | 每个转录本的 CDS 坐标和碱基替换，如 `test1G0387.1:c.412G>A`；位点不在任何 CDS 内时为 `-` |
+| `CDS_VAR` | string | 每个转录本的氨基酸变化和效应，如 `test1G0387.1:p.Ala138Thr(missense_variant)`；未注释时为 `-` |
+
+效应名沿用 SnpEff 输出的 Sequence Ontology 术语：`synonymous_variant`、`missense_variant`、`stop_gained`、`stop_lost`、`stop_retained_variant`、`start_lost`。氨基酸变化沿用其 HGVS 写法（`p.(=)`、`p.Ter5LysextTer?`、`p.Met1?`）。翻译使用标准遗传密码表（NCBI table 1）。仅注释单碱基替换，indel 一律留 `-`。
 
 #### `phenotype_stats.tsv`
 

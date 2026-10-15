@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "cds_annotator.h"
 #include "gff_annotator.h"
 #include "selector.h"
 #include "vcf_reader.h"
@@ -19,6 +20,7 @@ struct ParsedViewJsonCommand {
     std::vector<std::string> samples;
     haplokit::ViewOptions options;
     std::string gff3_path;
+    std::string cds_fasta_path;
 };
 
 struct ParsedViewTargetsJsonCommand {
@@ -27,6 +29,7 @@ struct ParsedViewTargetsJsonCommand {
     std::vector<std::string> samples;
     haplokit::ViewOptions options;
     std::string gff3_path;
+    std::string cds_fasta_path;
 };
 
 double parse_max_diff(const std::string& value) {
@@ -235,6 +238,13 @@ ParsedViewJsonCommand parse_view_json_command(int argc, char** argv) {
             parsed.gff3_path = argv[++idx];
             continue;
         }
+        if (arg == "--cds") {
+            if (idx + 1 >= argc) {
+                throw std::runtime_error("--cds requires a path");
+            }
+            parsed.cds_fasta_path = argv[++idx];
+            continue;
+        }
         if (arg == "--hap-prefix") {
             if (idx + 1 >= argc) {
                 throw std::runtime_error("--hap-prefix requires a value");
@@ -264,7 +274,8 @@ haplokit::ViewOptions parse_common_view_options(
     char** argv,
     int start_index,
     std::vector<std::string>* samples,
-    std::string* gff3_path) {
+    std::string* gff3_path,
+    std::string* cds_fasta_path = nullptr) {
     haplokit::ViewOptions options;
     if (samples == nullptr) {
         throw std::runtime_error("samples output is required");
@@ -321,6 +332,15 @@ haplokit::ViewOptions parse_common_view_options(
             }
             continue;
         }
+        if (arg == "--cds") {
+            if (idx + 1 >= argc) {
+                throw std::runtime_error("--cds requires a path");
+            }
+            if (cds_fasta_path) {
+                *cds_fasta_path = argv[++idx];
+            }
+            continue;
+        }
         if (arg == "--hap-prefix") {
             if (idx + 1 >= argc) {
                 throw std::runtime_error("--hap-prefix requires a value");
@@ -350,7 +370,7 @@ ParsedViewTargetsJsonCommand parse_view_targets_json_command(int argc, char** ar
     ParsedViewTargetsJsonCommand parsed;
     parsed.input_vcf = argv[2];
     parsed.targets = targets_file ? load_target_regions_file(argv[3]) : parse_target_regions(argv[3]);
-    parsed.options = parse_common_view_options(argc, argv, 4, &parsed.samples, &parsed.gff3_path);
+    parsed.options = parse_common_view_options(argc, argv, 4, &parsed.samples, &parsed.gff3_path, &parsed.cds_fasta_path);
     parsed.options.by = haplokit::GroupBy::Region;
     return parsed;
 }
@@ -395,6 +415,49 @@ std::vector<haplokit::Region> load_bed_regions(const std::string& path) {
     return regions;
 }
 
+// Annotate result.sites with CDS consequences when --cds is active. The
+// allele field holds "REF/ALT1,ALT2,..."; each ALT is annotated against every
+// overlapping CDS transcript and the results are joined with ';'.
+void apply_cds_annotation(haplokit::ViewResult& result, const haplokit::RegionData& data,
+                          const haplokit::CdsAnnotator& annotator) {
+    if (data.variants.size() != result.sites.size()) {
+        return;
+    }
+    for (std::size_t idx = 0; idx < result.sites.size(); ++idx) {
+        const auto& variant = data.variants[idx];
+        auto& site = result.sites[idx];
+        std::string joined;
+        for (const auto& alt : variant.alt) {
+            for (const auto& ann : annotator.annotate_snp(variant.chrom, variant.pos, variant.ref, alt)) {
+                if (!joined.empty()) {
+                    joined += ";";
+                }
+                joined += ann.transcript_id + ":c." + std::to_string(ann.cds_pos)
+                    + ann.ref_base + ">" + ann.alt_base
+                    + ":" + ann.protein_change + "(" + ann.effect + ")";
+            }
+        }
+        site.cds = joined;
+    }
+}
+
+// Load the CDS annotator when --cds is given; requires --gff3 for the CDS
+// interval structure.
+std::optional<haplokit::CdsAnnotator> load_cds_annotator(
+    const std::string& gff3_path, const std::string& cds_fasta_path) {
+    if (cds_fasta_path.empty()) {
+        return std::nullopt;
+    }
+    if (gff3_path.empty()) {
+        throw std::runtime_error("--cds requires --gff3 for the CDS interval structure");
+    }
+    haplokit::CdsAnnotator annotator;
+    if (!annotator.load(gff3_path, cds_fasta_path)) {
+        throw std::runtime_error("failed to load CDS annotation: " + annotator.last_error());
+    }
+    return annotator;
+}
+
 int run_view_json(int argc, char** argv) {
     const auto parsed = parse_view_json_command(argc, argv);
 
@@ -407,12 +470,17 @@ int run_view_json(int argc, char** argv) {
         annotator = std::move(ann);
     }
 
+    auto cds_annotator = load_cds_annotator(parsed.gff3_path, parsed.cds_fasta_path);
+
     haplokit::VcfReader reader(parsed.input_vcf);
     const auto data = reader.fetch(parsed.region, parsed.samples);
     auto result = haplokit::build_view_result(data, parsed.options);
 
     if (annotator.has_value()) {
         result.annotation = annotator->annotate(parsed.region.chrom, parsed.region.start, parsed.region.end);
+    }
+    if (cds_annotator.has_value()) {
+        apply_cds_annotation(result, data, *cds_annotator);
     }
 
     std::cout << haplokit::serialize_view_result_json(result) << "\n";
@@ -431,6 +499,8 @@ int run_view_targets_json(int argc, char** argv, bool targets_file = false) {
         annotator = std::move(ann);
     }
 
+    auto cds_annotator = load_cds_annotator(parsed.gff3_path, parsed.cds_fasta_path);
+
     const auto span = covering_region(parsed.targets);
     haplokit::VcfReader reader(parsed.input_vcf);
     const auto data = reader.fetch_targets(parsed.targets, parsed.samples);
@@ -438,6 +508,9 @@ int run_view_targets_json(int argc, char** argv, bool targets_file = false) {
 
     if (annotator.has_value()) {
         result.annotation = annotator->annotate(span.chrom, span.start, span.end);
+    }
+    if (cds_annotator.has_value()) {
+        apply_cds_annotation(result, data, *cds_annotator);
     }
 
     std::cout << haplokit::serialize_view_result_json(result) << "\n";
@@ -455,7 +528,8 @@ int run_view_bed_jsonl(int argc, char** argv) {
     const std::string regions_file = argv[3];
     std::vector<std::string> samples;
     std::string gff3_path;
-    auto options = parse_common_view_options(argc, argv, 4, &samples, &gff3_path);
+    std::string cds_fasta_path;
+    auto options = parse_common_view_options(argc, argv, 4, &samples, &gff3_path, &cds_fasta_path);
     options.by = haplokit::GroupBy::Region;
 
     std::optional<haplokit::GffAnnotator> annotator;
@@ -467,12 +541,17 @@ int run_view_bed_jsonl(int argc, char** argv) {
         annotator = std::move(ann);
     }
 
+    auto cds_annotator = load_cds_annotator(gff3_path, cds_fasta_path);
+
     haplokit::VcfReader reader(input_vcf);
     const auto regions = load_bed_regions(regions_file);
     for (std::size_t idx = 0; idx < regions.size(); ++idx) {
         const auto data = reader.fetch(regions[idx], samples);
         auto result = haplokit::build_view_result(data, options);
 
+        if (cds_annotator.has_value()) {
+            apply_cds_annotation(result, data, *cds_annotator);
+        }
         if (annotator.has_value()) {
             // BED is 0-based half-open; GFF annotation needs 1-based inclusive
             int64_t gff_start = regions[idx].start + 1;

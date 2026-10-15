@@ -182,6 +182,7 @@ def build_parser() -> HaolokitArgumentParser:
     view_calling.add_argument("-i", "--impute", action="store_true", help="treat missing genotypes as reference")
     view_calling.add_argument("-m", "--max-diff", type=_max_diff_value, help="merge haplotypes with difference ratio at or below this threshold")
     view_annotation.add_argument("-g", "--gff3", "--gff", help="GFF3/GTF annotation file for gene selectors and plots")
+    view_annotation.add_argument("--cds", dest="cds_fasta", help="spliced CDS FASTA (one sequence per transcript, header = transcript ID); annotates SNVs with CDS position and amino acid change, requires --gff3")
     view_annotation.add_argument("-u", "--upstream", type=_nonnegative_int_value, default=0, help="upstream bases added to gene selectors")
     view_annotation.add_argument("-d", "--downstream", type=_nonnegative_int_value, default=0, help="downstream bases added to gene selectors")
     view_annotation.add_argument("-a", "--strand-aware", action="store_true", help="apply upstream/downstream relative to gene strand")
@@ -443,6 +444,8 @@ def _append_common_args(cmd: list[str], args) -> None:
         cmd.extend(["--max-diff", str(args.max_diff)])
     if args.gff3:
         cmd.extend(["--gff3", str(args.gff3)])
+    if getattr(args, "cds_fasta", None):
+        cmd.extend(["--cds", str(args.cds_fasta)])
     cmd.extend(["--hap-prefix", str(args.hap_prefix)])
     cmd.extend(["--hap-pad", str(args.hap_pad)])
 
@@ -804,6 +807,46 @@ def _write_gff_annotation_table(rows: list[dict[str, object]], selectors: list[S
     return out_path
 
 
+def _write_cds_annotation_table(rows: list[dict[str, object]], selectors: list[Selector], args) -> Path:
+    output_dir = _output_base_dir(args)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    out_path = output_dir / "cds_anno.tsv"
+    lines: list[str] = []
+    for selector, row in zip(selectors, rows):
+        chrom, start, end = _selector_span(selector)
+        sites = list(row.get("sites", []))
+        pos_cells: list[str] = []
+        var_cells: list[str] = []
+        for site in sites:
+            annotation = str(site.get("cds", "")).strip()
+            if not annotation:
+                pos_cells.append("-")
+                var_cells.append("-")
+                continue
+            pos_parts: list[str] = []
+            var_parts: list[str] = []
+            for entry in annotation.split(";"):
+                if not entry:
+                    continue
+                # entry: transcript:c.NNNref>alt:protein(effect)
+                first_colon = entry.find(":")
+                transcript = entry[:first_colon] if first_colon >= 0 else ""
+                rest = entry[first_colon + 1:]
+                second_colon = rest.find(":")
+                cds_change = rest[:second_colon] if second_colon >= 0 else rest
+                protein = rest[second_colon + 1:] if second_colon >= 0 else ""
+                pos_parts.append(f"{transcript}:{cds_change}" if transcript else cds_change)
+                var_parts.append(f"{transcript}:{protein}" if transcript else protein)
+            pos_cells.append(";".join(pos_parts))
+            var_cells.append(";".join(var_parts))
+        lines.append("\t".join(["CHR", chrom, "Variants: ", str(len(sites))]))
+        lines.append("\t".join(["POS", *[str(site["pos"]) for site in sites]]))
+        lines.append("\t".join(["CDS_POS", *pos_cells]))
+        lines.append("\t".join(["CDS_VAR", *var_cells]))
+    out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return out_path
+
+
 def _compose_row(
     selector: Selector,
     args,
@@ -1064,6 +1107,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.gff3:
             rows = [{"annotation": summary_rows[idx].get("annotation", {"mode": "none"})} for idx in range(len(selectors))]
             _write_gff_annotation_table(rows, selectors, args)
+        if getattr(args, "cds_fasta", None):
+            _write_cds_annotation_table(summary_rows, selectors, args)
         return 0
 
     if args.regions_file:
@@ -1102,6 +1147,10 @@ def main(argv: list[str] | None = None) -> int:
         gff_summary = _write_gff_annotation_table(rows, selectors, args)
         for row in rows:
             row["gff_summary_file"] = str(gff_summary.resolve())
+    if getattr(args, "cds_fasta", None):
+        cds_path = _write_cds_annotation_table(rows, selectors, args)
+        for row in rows:
+            row["cds_anno_file"] = str(cds_path.resolve())
     _write_jsonl(rows, _jsonl_output_path(args))
     return 0
 

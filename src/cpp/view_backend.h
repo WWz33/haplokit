@@ -62,6 +62,8 @@ struct SiteRow {
     std::string chrom;
     int pos = 0;
     std::string allele;
+    // Per-site CDS annotation produced when --cds is active; empty otherwise.
+    std::string cds;
 };
 
 struct ViewResult {
