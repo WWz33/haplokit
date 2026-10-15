@@ -4,28 +4,41 @@ function(haplokit_configure_htslib)
 
     if(HAPLOKIT_USE_VENDORED_HTSLIB)
         if(NOT EXISTS "${HAPLOKIT_VENDORED_HTSLIB_DIR}/Makefile")
-            message(FATAL_ERROR "Vendored htslib not found at ${HAPLOKIT_VENDORED_HTSLIB_DIR}")
+            message(FATAL_ERROR
+                "htslib submodule not found at ${HAPLOKIT_VENDORED_HTSLIB_DIR}. "
+                "Run: git submodule update --init --recursive"
+            )
         endif()
 
         if(NOT EXISTS "${HAPLOKIT_VENDORED_HTSLIB_DIR}/htscodecs/htscodecs/htscodecs.c")
             message(FATAL_ERROR
-                "Vendored htscodecs sources are missing. Populate deps/htslib/htscodecs before building."
+                "htscodecs sources are missing. Run: git submodule update --init --recursive"
             )
         endif()
 
+        # htslib's Makefile rewrites htscodecs/htscodecs/version.h from
+        # `git describe` whenever htscodecs/.git exists, and its rule carries a
+        # `force` prerequisite so it runs on every build. A shallow submodule
+        # clone has no tags, so `git describe` falls back to a bare hash and the
+        # version becomes "1.6.6-g<hash>" instead of the configured version.
+        # Stamp the configure.ac version both before the build (so the header
+        # exists for a plain configure) and after it (so a rewrite by make is
+        # undone), keeping the value independent of clone depth.
         set(_haplokit_htscodecs_version_h "${HAPLOKIT_VENDORED_HTSLIB_DIR}/htscodecs/htscodecs/version.h")
-        if(NOT EXISTS "${_haplokit_htscodecs_version_h}")
-            file(READ "${HAPLOKIT_VENDORED_HTSLIB_DIR}/htscodecs/configure.ac" _haplokit_htscodecs_configure_ac)
-            string(REGEX MATCH "AC_INIT\\(htscodecs, *([0-9]+\\.[0-9]+\\.[0-9]+)\\)" _haplokit_htscodecs_version_match "${_haplokit_htscodecs_configure_ac}")
-            if(NOT CMAKE_MATCH_1)
-                message(FATAL_ERROR "Unable to determine vendored htscodecs version from configure.ac")
-            endif()
-            file(WRITE "${_haplokit_htscodecs_version_h}" "#define HTSCODECS_VERSION_TEXT \"${CMAKE_MATCH_1}\"\n")
+        file(READ "${HAPLOKIT_VENDORED_HTSLIB_DIR}/htscodecs/configure.ac" _haplokit_htscodecs_configure_ac)
+        string(REGEX MATCH "AC_INIT\\(htscodecs, *([0-9]+\\.[0-9]+\\.[0-9]+)\\)" _haplokit_htscodecs_version_match "${_haplokit_htscodecs_configure_ac}")
+        if(NOT CMAKE_MATCH_1)
+            message(FATAL_ERROR "Unable to determine htscodecs version from configure.ac")
         endif()
+        set(_haplokit_htscodecs_version_stamp "${CMAKE_BINARY_DIR}/htscodecs-version.h")
+        file(WRITE "${_haplokit_htscodecs_version_stamp}" "#define HTSCODECS_VERSION_TEXT \"${CMAKE_MATCH_1}\"\n")
+        file(COPY_FILE "${_haplokit_htscodecs_version_stamp}" "${_haplokit_htscodecs_version_h}" ONLY_IF_DIFFERENT)
 
         add_custom_command(
             OUTPUT "${HAPLOKIT_VENDORED_HTSLIB_DIR}/libhts.a"
             COMMAND "${CMAKE_MAKE_PROGRAM}" -C "${HAPLOKIT_VENDORED_HTSLIB_DIR}" lib-static -j1
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "${_haplokit_htscodecs_version_stamp}" "${_haplokit_htscodecs_version_h}"
             WORKING_DIRECTORY "${HAPLOKIT_VENDORED_HTSLIB_DIR}"
             COMMENT "Building vendored htslib"
             VERBATIM

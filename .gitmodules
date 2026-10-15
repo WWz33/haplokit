@@ -1,0 +1,6 @@
+[submodule "deps/gffsub"]
+	path = deps/gffsub
+	url = https://github.com/WWz33/gffsub.git
+[submodule "deps/htslib"]
+	path = deps/htslib
+	url = https://github.com/samtools/htslib.git

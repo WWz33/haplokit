@@ -18,6 +18,9 @@ recursive-include tests/python *.py
 recursive-include data *
 recursive-include .github/workflows *.yml
 
-prune deps/htslib/.git
-prune deps/htslib/htscodecs/.git
-prune deps/gffsub/.git
+# Submodules are vendored into the sdist as plain sources. Their .git entry
+# is a file pointing at the superproject, not a directory, so prune alone
+# does not drop it.
+exclude deps/htslib/.git
+exclude deps/htslib/htscodecs/.git
+exclude deps/gffsub/.git

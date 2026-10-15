@@ -17,6 +17,9 @@ add_library(haplokit_core
     src/cpp/vcf_reader.cpp
     src/cpp/view_backend.cpp
     src/cpp/gff_annotator.cpp
+    deps/gffsub/src/feature_types.cpp
+    deps/gffsub/src/string_utils.cpp
+    deps/gffsub/src/record.cpp
     deps/gffsub/src/gff3_parser.cpp
     deps/gffsub/src/gtf_parser.cpp
     deps/gffsub/src/attributes.cpp
