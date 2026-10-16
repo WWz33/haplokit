@@ -29,6 +29,40 @@ struct CdsVariantAnnotation {
     std::string protein_change;
 };
 
+// One variant of a haplotype, in VCF terms.
+struct HaplotypeVariant {
+    int64_t pos = 0;
+    std::string ref;
+    std::string alt;
+};
+
+// Consequence of a whole haplotype, obtained by applying all of its variants
+// to the transcript at once (unlike CdsVariantAnnotation, which looks at one
+// variant in isolation). This is what catches compound effects.
+struct CdsHaplotypeAnnotation {
+    std::string transcript_id;
+    std::string gene_id;
+    int nt_delta = 0;              // net nucleotide length change
+    // synonymous_variant, missense_variant, start_lost, stop_gained,
+    // stop_lost, frameshift_variant, inframe_insertion, inframe_deletion,
+    // inframe_altering
+    std::string effect;
+    std::string protein_change;    // composite HGVS, e.g. p.[Ile5Lys;Tyr294Ter]
+    std::string dna_change;        // applied changes joined with '+', e.g. c.14T>A+c.548T>A
+    int first_diff_aa = 0;         // 1-based first differing amino acid, 0 = none
+    int aa_ref_len = 0;
+    int aa_alt_len = 0;
+    int ptc_codon = 0;             // 1-based premature stop codon, 0 = none
+    // NMD_sensitive when the PTC sits more than 50 nt upstream of the last
+    // exon-exon junction; NMD_escape otherwise (including single-exon CDS).
+    std::string nmd = "-";
+    // Variants that could not be applied, with the reason.
+    std::vector<std::string> skipped;
+    // Set when the reference CDS itself looks wrong (no terminal stop, or an
+    // internal stop before the last codon).
+    std::string note;
+};
+
 class CdsAnnotator {
 public:
     // gff_path supplies the CDS interval structure; cds_fasta_path holds one
@@ -42,12 +76,29 @@ public:
     std::vector<CdsVariantAnnotation> annotate_snp(
         const std::string& chrom, int64_t pos, const std::string& ref, const std::string& alt) const;
 
+    // Annotate a whole haplotype: apply every variant to each transcript's CDS
+    // at once, translate, and compare with the reference protein. Returns one
+    // entry per transcript that has at least one applicable variant.
+    std::vector<CdsHaplotypeAnnotation> annotate_haplotype(
+        const std::string& chrom, const std::vector<HaplotypeVariant>& variants) const;
+
     const std::string& last_error() const { return last_error_; }
 
 private:
+    struct TranscriptStructure {
+        std::vector<gffsub::GffRecord> cds;     // CDS spans, genomic ascending
+        std::vector<gffsub::GffRecord> exons;   // exon spans, genomic ascending
+        bool minus = false;
+        std::string gene_id;
+        std::string protein;                    // reference translation
+        std::vector<int64_t> junctions;         // exon-exon junctions inside the CDS
+    };
+    const TranscriptStructure* structure(const std::string& transcript_id) const;
+
     std::optional<gffsub::AnnotationIndex> index_;
     // transcript_id -> spliced CDS sequence (5'->3', already strand-oriented)
     std::unordered_map<std::string, std::string> cds_seqs_;
+    mutable std::unordered_map<std::string, std::optional<TranscriptStructure>> structures_;
     std::string last_error_;
 };
 

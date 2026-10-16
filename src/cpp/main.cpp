@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <fstream>
 #include <cmath>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -441,6 +442,70 @@ void apply_cds_annotation(haplokit::ViewResult& result, const haplokit::RegionDa
     }
 }
 
+// Split "REF/ALT1,ALT2" into its parts.
+void split_site_allele(const std::string& allele, std::string* ref, std::vector<std::string>* alts) {
+    const auto slash = allele.find('/');
+    if (slash == std::string::npos) {
+        *ref = allele;
+        return;
+    }
+    *ref = allele.substr(0, slash);
+    std::istringstream alt_input(allele.substr(slash + 1));
+    std::string alt;
+    while (std::getline(alt_input, alt, ',')) {
+        alts->push_back(alt);
+    }
+}
+
+// Rebuild the variants carried by one haplotype from its encoded states
+// ("0/0|1/1|2/2" for "ref|alt1|alt2") and the site allele strings.
+std::vector<haplokit::HaplotypeVariant> haplotype_variants(const std::string& hap,
+                                                          const std::vector<haplokit::SiteRow>& sites) {
+    std::vector<haplokit::HaplotypeVariant> variants;
+    std::size_t start = 0;
+    std::size_t site_idx = 0;
+    while (start <= hap.size() && site_idx < sites.size()) {
+        const auto end = hap.find('|', start);
+        const std::string state = hap.substr(start, end == std::string::npos ? std::string::npos : end - start);
+        const auto slash = state.find('/');
+        const int allele_index = slash == std::string::npos ? 0 : std::stoi(state.substr(0, slash));
+        if (allele_index > 0) {
+            std::string ref;
+            std::vector<std::string> alts;
+            split_site_allele(sites[site_idx].allele, &ref, &alts);
+            const std::size_t alt_index = static_cast<std::size_t>(allele_index - 1);
+            if (alt_index < alts.size()) {
+                variants.push_back(haplokit::HaplotypeVariant{
+                    sites[site_idx].pos, ref, alts[alt_index]});
+            }
+        }
+        ++site_idx;
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+    return variants;
+}
+
+// Annotate every haplotype of the result with its composite CDS consequence.
+void apply_haplotype_cds_annotation(haplokit::ViewResult& result,
+                                    const haplokit::CdsAnnotator& annotator,
+                                    const std::string& chrom) {
+    for (auto& hap : result.haplotypes) {
+        const auto variants = haplotype_variants(hap.hap, result.sites);
+        if (variants.empty()) continue;
+        std::string joined;
+        for (const auto& ann : annotator.annotate_haplotype(chrom, variants)) {
+            if (!joined.empty()) joined += ";";
+            joined += ann.transcript_id + ":" + ann.effect + ":" + ann.protein_change
+                + ":" + ann.dna_change + ":" + ann.nmd;
+            for (const auto& skipped : ann.skipped) {
+                joined += ":skip(" + skipped + ")";
+            }
+        }
+        hap.cds = joined;
+    }
+}
+
 // Load the CDS annotator when --cds is given; requires --gff3 for the CDS
 // interval structure.
 std::optional<haplokit::CdsAnnotator> load_cds_annotator(
@@ -481,6 +546,7 @@ int run_view_json(int argc, char** argv) {
     }
     if (cds_annotator.has_value()) {
         apply_cds_annotation(result, data, *cds_annotator);
+        apply_haplotype_cds_annotation(result, *cds_annotator, data.variants.empty() ? std::string() : data.variants.front().chrom);
     }
 
     std::cout << haplokit::serialize_view_result_json(result) << "\n";
@@ -511,6 +577,7 @@ int run_view_targets_json(int argc, char** argv, bool targets_file = false) {
     }
     if (cds_annotator.has_value()) {
         apply_cds_annotation(result, data, *cds_annotator);
+        apply_haplotype_cds_annotation(result, *cds_annotator, data.variants.empty() ? std::string() : data.variants.front().chrom);
     }
 
     std::cout << haplokit::serialize_view_result_json(result) << "\n";
@@ -551,6 +618,7 @@ int run_view_bed_jsonl(int argc, char** argv) {
 
         if (cds_annotator.has_value()) {
             apply_cds_annotation(result, data, *cds_annotator);
+        apply_haplotype_cds_annotation(result, *cds_annotator, data.variants.empty() ? std::string() : data.variants.front().chrom);
         }
         if (annotator.has_value()) {
             // BED is 0-based half-open; GFF annotation needs 1-based inclusive

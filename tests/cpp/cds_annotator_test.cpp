@@ -40,8 +40,16 @@ std::string build_genome() {
         }
     };
     // Fill the gA spans with an arbitrary base so only our forced codons matter.
-    for (int pos = 1000; pos <= 1300; ++pos) genome[pos - 1] = 'C';
-    for (int pos = 2000; pos <= 2200; ++pos) genome[pos - 1] = 'C';
+    // gA CDS backbone: a repeating GCC motif. The three reading frames of GCC
+    // translate to Ala, Pro and Arg, so a frameshift shows up as a changed
+    // sequence and can never accidentally create a stop codon.
+    const auto fill_cds_motif = [&](int first, int last) {
+        for (int pos = first; pos <= last; ++pos) {
+            genome[pos - 1] = "GCC"[(pos - first) % 3];
+        }
+    };
+    fill_cds_motif(1000, 1300);
+    fill_cds_motif(2000, 2200);
     // c.1-3 ATG (span1 start)
     set(1000, "ATG");
     // c.4-6 CAG (Gln); a single c.4 C>T makes TAG, a stop_gained
@@ -51,6 +59,9 @@ std::string build_genome() {
     // stop at c.499-501: span1 is 301nt, so c.499 = span2 pos 2000+198-301-1 = ...
     // c.302 = span2 first base (2000). c.499 -> span2 index 499-302 = 197 -> 2197.
     set(2197, "TAA");
+    // Codon 151 (c.451-453, genomic 2149-2151) sits in the last exon; forcing
+    // CAG there lets a single C>T create a PTC that escapes NMD.
+    set(2149, "CAG");
     // minus-strand gene gB: CDS runs 7300..7000 then 5300..5000, complemented.
     for (int pos = 7000; pos <= 7300; ++pos) genome[pos - 1] = 'G';  // complement 'C'
     for (int pos = 5000; pos <= 5300; ++pos) genome[pos - 1] = 'G';
@@ -264,6 +275,85 @@ int run() {
     }
 
     check(failures == 0, "all checks passed");
+
+    // ---- haplotype-level (composite) annotation ----
+    // gA.1 has two CDS spans (1000-1300, 2000-2200): 502 nt, junction at
+    // c.301, forced stop at c.499-501. A PTC at or before c.251 is more than
+    // 50 nt upstream of the junction and triggers NMD.
+    const auto hap_one = [&](const char* label, std::vector<haplokit::HaplotypeVariant> variants,
+                             const std::string& transcript, const std::string& want_effect,
+                             const std::string& want_protein) {
+        const auto results = annotator.annotate_haplotype("c1", variants);
+        const haplokit::CdsHaplotypeAnnotation* found = nullptr;
+        for (const auto& item : results) {
+            if (item.transcript_id == transcript) found = &item;
+        }
+        if (found == nullptr) {
+            check(false, std::string(label) + " (no annotation for " + transcript + ")");
+            return;
+        }
+        check(found->effect == want_effect && found->protein_change == want_protein,
+              std::string(label) + " -> " + found->effect + " " + found->protein_change
+                  + " (want " + want_effect + " " + want_protein + ")");
+    };
+
+    // stop_gained with the PTC far upstream of the junction: NMD sensitive.
+    {
+        const auto results = annotator.annotate_haplotype("c1", {{1003, "C", "T"}});
+        const haplokit::CdsHaplotypeAnnotation* gene_a = nullptr;
+        for (const auto& item : results) {
+            if (item.transcript_id == "gA.1") gene_a = &item;
+        }
+        check(gene_a != nullptr && gene_a->effect == "stop_gained"
+                  && gene_a->protein_change == "p.Gln2Ter" && gene_a->ptc_codon == 2
+                  && gene_a->nmd == "NMD_sensitive",
+              "haplotype stop_gained early -> NMD_sensitive");
+    }
+    // stop_gained with the PTC inside the last exon: escapes NMD.
+    {
+        const auto results = annotator.annotate_haplotype("c1", {{2149, "C", "T"}});
+        const haplokit::CdsHaplotypeAnnotation* gene_a = nullptr;
+        for (const auto& item : results) {
+            if (item.transcript_id == "gA.1") gene_a = &item;
+        }
+        check(gene_a != nullptr && gene_a->effect == "stop_gained"
+                  && gene_a->ptc_codon == 151 && gene_a->nmd == "NMD_escape",
+              "haplotype stop_gained in last exon -> NMD_escape");
+    }
+
+    // gA.1 c.1-12 reads ATGCAGGCCTAC: codons ATG/CAG/GCC/TAC, so c.6 is the
+    // anchor 'G' before the GCC codon at c.7-9. VCF alleles keep that anchor.
+    hap_one("haplotype frameshift (1 nt insertion after c.6)", {{1005, "G", "GG"}}, "gA.1",
+            "frameshift_variant", "p.Ala3fs?");
+    hap_one("haplotype inframe insertion (3 nt after c.6)", {{1005, "G", "GGCC"}}, "gA.1",
+            "inframe_insertion", "p.Ala3_Tyr4insAla");
+    hap_one("haplotype inframe deletion (GCC at c.7-9)", {{1005, "GGCC", "G"}}, "gA.1",
+            "inframe_deletion", "p.Ala3_Ala3del");
+    // One insertion and one deletion, net zero: the frame survives but the
+    // haplotype is not a plain substitution.
+    hap_one("haplotype inframe altering (+1/-1)", {{1005, "G", "GG"}, {1009, "TAC", "AC"}}, "gA.1",
+            "inframe_altering", "p.Ala3_Tyr4delinsGlyHis");
+    hap_one("haplotype two substitutions list", {{1003, "C", "A"}, {1009, "T", "C"}}, "gA.1",
+            "missense_variant", "p.[Gln2Lys;Tyr4His]");
+    // Start codon destroyed: reported as start_lost, not as a frameshift.
+    hap_one("haplotype start_lost (ATG changed)", {{1000, "A", "T"}}, "gA.1",
+            "start_lost", "p.Met1?");
+    // Minus-strand transcript: the start codon destroyed by a SNP.
+    hap_one("haplotype minus-strand start_lost", {{7299, "A", "C"}}, "gB.1",
+            "start_lost", "p.Met1?");
+
+    // A REF that runs past the end of a CDS span crosses an exon junction and
+    // cannot be applied to the spliced sequence.
+    {
+        const auto results = annotator.annotate_haplotype("c1", {{1300, "CC", "C"}});
+        bool reported = false;
+        for (const auto& item : results) {
+            if (item.transcript_id != "gA.1") continue;
+            reported = item.effect == "-" && !item.skipped.empty();
+        }
+        check(reported, "haplotype junction-spanning variant reported as skipped");
+    }
+    check(annotator.annotate_haplotype("c1", {}).empty(), "haplotype with no variants is empty");
 
     std::remove("data/cds_test_tmp.gff3");
     std::remove("data/cds_test_tmp.fa");

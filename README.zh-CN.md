@@ -396,7 +396,7 @@ haplokit view in.vcf.gz --gene-id Glyma.01G001000 --gff genes.gff3 \
 haplokit view in.vcf.gz -r chr1:1000-2000 --gff genes.gff3 --cds genes.cds.fa --output-file out
 ```
 
-`--cds` 接收拼接后的 CDS FASTA（例如 `gffread -x` 的输出），生成 `cds_anno.tsv`：区域内每个 SNP 在每个转录本上的 CDS 坐标（`c.` 位置）和氨基酸变化。需配合 `--gff3`；FASTA 的 header 必须是 GFF3 中的 mRNA ID，且 CDS 序列需与注释一致，以便校验参考碱基。indel 与不在任何 CDS 内的位点记为 `-`。
+`--cds` 接收拼接后的 CDS FASTA（例如 `gffread -x` 的输出），生成两个文件。`cds_anno.tsv` 给出区域内每个 SNP 在每个转录本上的 CDS 坐标（`c.` 位置）和氨基酸变化；`cds_hap_anno.tsv` 给出每个单倍型的复合后果，能捕捉只有把该单倍型的变异合在一起施加时才出现的效应。需配合 `--gff3`；FASTA 的 header 必须是 GFF3 中的 mRNA ID，且 CDS 序列需与注释一致，以便校验参考碱基。
 
 ## 参数速查
 
@@ -633,6 +633,27 @@ make clean
 | `CDS_VAR` | string | 每个转录本的氨基酸变化和效应，如 `test1G0387.1:p.Ala138Thr(missense_variant)`；未注释时为 `-` |
 
 效应名沿用 SnpEff 输出的 Sequence Ontology 术语：`synonymous_variant`、`missense_variant`、`stop_gained`、`stop_lost`、`stop_retained_variant`、`start_lost`。氨基酸变化沿用其 HGVS 写法（`p.(=)`、`p.Ter5LysextTer?`、`p.Met1?`）。翻译使用标准遗传密码表（NCBI table 1）。仅注释单碱基替换，indel 一律留 `-`。
+
+#### `cds_hap_anno.tsv`
+
+单倍型层面的编码区后果（仅在提供 `--cds` 时生成）。与逐个变异单独看的 `cds_anno.tsv` 不同，本表把该单倍型携带的全部变异一次性施加到转录本上，因此能捕捉复合效应：两个替换可能合并成一个终止密码子，一个插入加一个删除可能改变读框，而单独看都不会。
+
+| 列名 | 类型 | 说明 |
+| --- | --- | --- |
+| `chr`, `start`, `end` | string, integer | 所选区域 |
+| `Hap` | string | 单倍型标签 |
+| `count` | integer | 该单倍型的样本数 |
+| `CDS_effect` | string | 该单倍型的后果，如 `frameshift_variant`；与参考一致时为 `-` |
+| `protein_change` | string | 复合氨基酸变化，如 `p.Ile5fs?`、`p.[Leu5His;Leu183Arg]`、`p.Ala3_Ala3del` |
+| `dna_change` | string | 施加的变异用 `+` 连接，如 `c.548T>G+c.706_707insGG` |
+| `NMD` | string | `NMD_sensitive`、`NMD_escape` 或 `-` |
+| `transcript` | string | 转录本 ID；未注释时为 `-` |
+
+每个单倍型对每个受影响的转录本占一行。效应名沿用 SnpEff 与 `bcftools csq` 输出的 Sequence Ontology 术语：`synonymous_variant`、`missense_variant`、`start_lost`、`stop_gained`、`stop_lost`、`frameshift_variant`、`inframe_insertion`、`inframe_deletion`、`inframe_altering`。
+
+`NMD_sensitive` 表示提前终止密码子位于最后一个外显子-外显子接合点上游 50 nt 以上，即无义介导降解的常见触发条件。终止密码子落在末外显子内，或转录本只有一个外显子时，记为 `NMD_escape`。
+
+REF 跨越外显子接合点的变异无法映射到拼接后的 CDS，会在 `CDS_effect` 中列为 `skip(...)`，其余变异照常施加。
 
 #### `phenotype_stats.tsv`
 

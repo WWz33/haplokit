@@ -346,6 +346,9 @@ std::string serialize_view_result_json(const ViewResult& result) {
                 {"states", h.states},
                 {"total", h.total},
             });
+            if (!h.cds.empty()) {
+                haps.back()["cds"] = h.cds;
+            }
         }
         j["haplotypes"] = haps;
     }

@@ -53,15 +53,17 @@ def _variant_refs() -> dict[int, str]:
 def _write_cds_fixture(path: Path) -> Path:
     """Synthesize a CDS FASTA consistent with the test GFF and VCF.
 
-    The genome backbone is all 'A'; single-base REF alleles from the VCF are
-    written back so the annotation's REF cross-check passes. Two codons are
-    forced: ATG at the CDS start (both transcripts start at 4332) and TAC at
+    The genome backbone is 'A'; every REF allele from the VCF (including
+    multi-base ones) is written back so the annotation's REF cross-check passes
+    for both single-variant and haplotype annotation. Two codons are forced:
+    ATG at the CDS start (both transcripts start at 4332) and TAC at
     5211-5213 so that the g.5213 C>G variant produces a stop codon.
     """
     genome = ["A"] * 8000
     for pos, ref in _variant_refs().items():
-        if len(ref) == 1:
-            genome[pos - 1] = ref
+        for offset, base in enumerate(ref):
+            if pos - 1 + offset < len(genome):
+                genome[pos - 1 + offset] = base
     genome[4332 - 1 : 4334] = ["A", "T", "G"]
     genome[5211 - 1 : 5213] = ["T", "A", "C"]
     backbone = "".join(genome)
@@ -154,6 +156,63 @@ def test_cds_without_gff_is_rejected(tmp_path: Path, cds_fasta: Path) -> None:
                 str(tmp_path / "out"),
             ]
         )
+
+
+def test_cds_haplotype_annotation_table(tmp_path: Path, cds_fasta: Path) -> None:
+    out_dir = tmp_path / "out"
+    exit_code = main(
+        [
+            "view",
+            str(VCF),
+            "-r",
+            "scaffold_1:4300-7910",
+            "--gff",
+            str(GFF),
+            "--cds",
+            str(cds_fasta),
+            "--output-file",
+            str(out_dir),
+        ]
+    )
+    assert exit_code == 0
+
+    rows = _read_tsv(out_dir / "cds_hap_anno.tsv")
+    assert rows[0] == [
+        "chr", "start", "end", "Hap", "count",
+        "CDS_effect", "protein_change", "dna_change", "NMD", "transcript",
+    ]
+    by_hap: dict[str, list[list[str]]] = {}
+    for row in rows[1:]:
+        by_hap.setdefault(row[3], []).append(row)
+
+    # Hap01 carries only reference alleles: no consequence, no transcript.
+    assert by_hap["Hap01"][0][5] == "-"
+    assert by_hap["Hap01"][0][9] == "-"
+
+    # Hap06 differs from the reference at g.4879 and g.5037 only. Its net length
+    # change is not a multiple of three, so the whole haplotype is a frameshift.
+    hap06 = by_hap["Hap06"][0]
+    assert hap06[5] == "frameshift_variant"
+    assert hap06[7] == "c.548T>G+c.706_707insGG"
+    assert hap06[9] == "test1G0387.1"
+
+    # Hap04 carries indels in transcript .1 and a single SNP in .2, so it
+    # produces one row per affected transcript.
+    hap04 = {row[9]: row for row in by_hap["Hap04"]}
+    assert set(hap04) == {"test1G0387.1", "test1G0387.2"}
+    assert hap04["test1G0387.2"][5] == "missense_variant"
+    assert hap04["test1G0387.2"][6] == "p.Ile5Lys"
+    assert hap04["test1G0387.2"][7] == "c.14T>A"
+
+    # Hap08's frameshift reaches a premature stop codon upstream of the last
+    # exon-exon junction, which is reported as NMD sensitive.
+    hap08 = {row[9]: row for row in by_hap["Hap08"]}
+    assert hap08["test1G0387.1"][8] == "NMD_sensitive"
+    assert hap08["test1G0387.1"][6].startswith("p.Ile5fs")
+
+    # Every row is anchored to the selected region.
+    for row in rows[1:]:
+        assert row[0] == "scaffold_1" and row[1] == "4300" and row[2] == "7910"
 
 
 def test_cds_annotation_absent_without_flag(tmp_path: Path) -> None:

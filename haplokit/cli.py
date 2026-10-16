@@ -847,6 +847,44 @@ def _write_cds_annotation_table(rows: list[dict[str, object]], selectors: list[S
     return out_path
 
 
+def _write_cds_hap_annotation_table(
+    rows: list[dict[str, object]], selectors: list[Selector], args
+) -> Path:
+    output_dir = _output_base_dir(args)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    out_path = output_dir / "cds_hap_anno.tsv"
+    lines = ["chr\tstart\tend\tHap\tcount\tCDS_effect\tprotein_change\tdna_change\tNMD\ttranscript"]
+    for selector, row in zip(selectors, rows):
+        chrom, start, end = _selector_span(selector)
+        for item in row.get("haplotypes", []):
+            if not isinstance(item, dict):
+                continue
+            hap_label = str(item.get("id", ""))
+            count = str(item.get("count", ""))
+            annotation = str(item.get("cds", "")).strip()
+            if not annotation:
+                lines.append(f"{chrom}\t{start}\t{end}\t{hap_label}\t{count}\t-\t-\t-\t-\t-")
+                continue
+            for entry in annotation.split(";"):
+                if not entry:
+                    continue
+                # transcript:effect:protein:dna:nmd[:skip(...)]
+                parts = entry.split(":")
+                transcript = parts[0] if parts else ""
+                effect = parts[1] if len(parts) > 1 else "-"
+                protein = parts[2] if len(parts) > 2 else "-"
+                dna = parts[3] if len(parts) > 3 else "-"
+                nmd = parts[4] if len(parts) > 4 else "-"
+                skips = [p for p in parts[5:] if p.startswith("skip(")]
+                effect_cell = effect if not skips else effect + ";" + ";".join(skips)
+                lines.append(
+                    f"{chrom}\t{start}\t{end}\t{hap_label}\t{count}\t{effect_cell}\t"
+                    f"{protein or '-'}\t{dna or '-'}\t{nmd or '-'}\t{transcript}"
+                )
+    out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return out_path
+
+
 def _compose_row(
     selector: Selector,
     args,
@@ -1109,6 +1147,7 @@ def main(argv: list[str] | None = None) -> int:
             _write_gff_annotation_table(rows, selectors, args)
         if getattr(args, "cds_fasta", None):
             _write_cds_annotation_table(summary_rows, selectors, args)
+            _write_cds_hap_annotation_table(summary_rows, selectors, args)
         return 0
 
     if args.regions_file:
@@ -1149,8 +1188,10 @@ def main(argv: list[str] | None = None) -> int:
             row["gff_summary_file"] = str(gff_summary.resolve())
     if getattr(args, "cds_fasta", None):
         cds_path = _write_cds_annotation_table(rows, selectors, args)
+        hap_path = _write_cds_hap_annotation_table(rows, selectors, args)
         for row in rows:
             row["cds_anno_file"] = str(cds_path.resolve())
+            row["cds_hap_anno_file"] = str(hap_path.resolve())
     _write_jsonl(rows, _jsonl_output_path(args))
     return 0
 

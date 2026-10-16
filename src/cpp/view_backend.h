@@ -44,6 +44,10 @@ struct HaplotypeSummaryRow {
     std::string id;
     std::string hap;
     std::vector<std::string> states;
+    // Composite CDS consequence for this haplotype, filled only when --cds is
+    // active. Format: transcript:effect:protein:dna:nmd, joined with ';' across
+    // transcripts.
+    std::string cds;
     std::vector<std::string> samples;
     std::vector<PopulationBreakdownRow> populations;
     int count = 0;

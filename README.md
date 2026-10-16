@@ -396,7 +396,7 @@ haplokit view in.vcf.gz --gene-id Glyma.01G001000 --gff genes.gff3 \
 haplokit view in.vcf.gz -r chr1:1000-2000 --gff genes.gff3 --cds genes.cds.fa --output-file out
 ```
 
-`--cds` takes a spliced CDS FASTA (for example `gffread -x` output) and writes `cds_anno.tsv`: for every SNV in the region, the CDS coordinate (`c.` position) and the amino acid change per transcript. Requires `--gff3`; FASTA headers must be the GFF3 mRNA IDs, and the CDS sequence must match the annotation so the reference base can be cross-checked. Indels and sites outside any CDS are left as `-`.
+`--cds` takes a spliced CDS FASTA (for example `gffread -x` output) and writes two files. `cds_anno.tsv` reports, for every SNV in the region, the CDS coordinate (`c.` position) and the amino acid change per transcript. `cds_hap_anno.tsv` reports the composite consequence per haplotype, which catches effects that only appear when a haplotype's variants are applied together. Requires `--gff3`; FASTA headers must be the GFF3 mRNA IDs, and the CDS sequence must match the annotation so the reference base can be cross-checked.
 
 ## Command Reference
 
@@ -633,6 +633,27 @@ Coding-effect annotation for variants in the selected region (only if `--cds` pr
 | `CDS_VAR` | string | Protein change and effect per transcript, e.g. `test1G0387.1:p.Ala138Thr(missense_variant)`; `-` when unannotated |
 
 Effects follow Sequence Ontology terms as reported by SnpEff: `synonymous_variant`, `missense_variant`, `stop_gained`, `stop_lost`, `stop_retained_variant`, `start_lost`. Protein changes follow its HGVS conventions (`p.(=)`, `p.Ter5LysextTer?`, `p.Met1?`). The translation uses the standard genetic code (NCBI table 1). Only single-base substitutions are annotated; indels are left as `-`.
+
+#### `cds_hap_anno.tsv`
+
+Haplotype-level coding consequence (only if `--cds` provided). Unlike `cds_anno.tsv`, which looks at one variant at a time, this applies every variant a haplotype carries to the transcript at once, so compound effects are caught: two substitutions can combine into a stop codon, and an insertion plus a deletion can shift the reading frame even though neither does alone.
+
+| Column | Type | Description |
+| --- | --- | --- |
+| `chr`, `start`, `end` | string, integer | Selected region |
+| `Hap` | string | Haplotype label |
+| `count` | integer | Samples with this haplotype |
+| `CDS_effect` | string | Consequence for this haplotype, e.g. `frameshift_variant`; `-` when the haplotype matches the reference |
+| `protein_change` | string | Composite protein change, e.g. `p.Ile5fs?`, `p.[Leu5His;Leu183Arg]`, `p.Ala3_Ala3del` |
+| `dna_change` | string | Applied changes joined with `+`, e.g. `c.548T>G+c.706_707insGG` |
+| `NMD` | string | `NMD_sensitive`, `NMD_escape`, or `-` |
+| `transcript` | string | Transcript ID; `-` when unannotated |
+
+One row per haplotype per affected transcript. Effect terms follow the Sequence Ontology as SnpEff and `bcftools csq` report them: `synonymous_variant`, `missense_variant`, `start_lost`, `stop_gained`, `stop_lost`, `frameshift_variant`, `inframe_insertion`, `inframe_deletion`, `inframe_altering`.
+
+`NMD_sensitive` means the premature stop codon sits more than 50 nt upstream of the last exon-exon junction, the usual trigger for nonsense-mediated decay. A stop in the last exon, or in a single-exon CDS, is reported as `NMD_escape`.
+
+A variant whose REF crosses an exon junction cannot be mapped onto the spliced CDS and is listed in `CDS_effect` as `skip(...)`; the remaining variants still apply.
 
 #### `phenotype_stats.tsv`
 

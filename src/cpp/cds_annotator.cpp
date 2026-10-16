@@ -38,6 +38,17 @@ char translate_codon(char b1, char b2, char b3) {
     return idx < 0 ? 'X' : kCodonTable[idx];
 }
 
+char complement(char b);
+
+std::string reverse_complement(const std::string& seq) {
+    std::string out;
+    out.reserve(seq.size());
+    for (auto it = seq.rbegin(); it != seq.rend(); ++it) {
+        out.push_back(complement(*it));
+    }
+    return out;
+}
+
 char complement(char b) {
     switch (b) {
         case 'A': return 'T';
@@ -121,11 +132,138 @@ std::unordered_map<std::string, std::string> read_fasta(const std::string& path,
     return seqs;
 }
 
-std::string to_upper_seq(const std::string& s) {
-    std::string out = s;
-    std::transform(out.begin(), out.end(), out.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+std::string translate_seq(const std::string& cds) {
+    std::string protein;
+    protein.reserve(cds.size() / 3);
+    for (std::size_t i = 0; i + 3 <= cds.size(); i += 3) {
+        protein.push_back(translate_codon(cds[i], cds[i + 1], cds[i + 2]));
+    }
+    return protein;
+}
+
+// HGVS DNA change for one variant at a 1-based CDS coordinate. VCF alleles
+// carry an anchor base, so insertions report alt[1:] and deletions report
+// ref[1:] after the anchor.
+std::string format_dna_change(int cds_pos, const std::string& ref, const std::string& alt) {
+    const int ref_len = static_cast<int>(ref.size());
+    const int alt_len = static_cast<int>(alt.size());
+    if (ref_len == alt_len) {
+        return "c." + std::to_string(cds_pos) + ref + ">" + alt;
+    }
+    if (alt_len > ref_len) {
+        // c.14_15insA for an insertion anchored at c.14
+        return "c." + std::to_string(cds_pos) + "_" + std::to_string(cds_pos + 1) + "ins"
+            + alt.substr(1);
+    }
+    // c.15_17delAC for a deletion of AC after the anchor at c.14
+    return "c." + std::to_string(cds_pos + 1) + "_" + std::to_string(cds_pos + ref_len - 1)
+        + "del" + ref.substr(1);
+}
+
+std::string aa_three(char aa) { return aa == '*' ? std::string("Ter") : aa_name(aa); }
+
+// Substitutions only (CDS length unchanged): list every changed codon.
+// Bounded to kMaxListed entries so a haplotype with many variants stays
+// readable; the full count is preserved by the trailing marker.
+std::string format_substitution_list(const std::string& ref_prot, const std::string& alt_prot) {
+    constexpr std::size_t kMaxListed = 12;
+    std::vector<std::string> parts;
+    std::size_t total = 0;
+    for (std::size_t i = 0; i < ref_prot.size() && i < alt_prot.size(); ++i) {
+        if (ref_prot[i] == alt_prot[i]) continue;
+        ++total;
+        if (parts.size() < kMaxListed) {
+            parts.push_back(aa_three(ref_prot[i]) + std::to_string(i + 1) + aa_three(alt_prot[i]));
+        }
+    }
+    if (parts.empty()) return "p.(=)";
+    std::string joined;
+    for (std::size_t i = 0; i < parts.size(); ++i) {
+        if (i > 0) joined += ";";
+        joined += parts[i];
+    }
+    if (total > parts.size()) joined += ";...";
+    if (parts.size() == 1 && total == 1) return "p." + joined;
+    return "p.[" + joined + "]";
+}
+
+std::string inserted_residues(const std::string& mid) {
+    constexpr std::size_t kMaxListed = 6;
+    if (mid.size() > kMaxListed) return std::to_string(mid.size()) + "aa";
+    std::string out;
+    for (char aa : mid) out += aa_three(aa);
     return out;
+}
+
+// Frame-preserving indel: report the changed reference span. The residue
+// sequence is listed for short insertions and summarised by length otherwise,
+// so the string stays bounded no matter how many variants the haplotype has.
+std::string format_indel_change(const std::string& ref_prot, const std::string& alt_prot) {
+    std::size_t prefix = 0;
+    const std::size_t shorter = std::min(ref_prot.size(), alt_prot.size());
+    while (prefix < shorter && ref_prot[prefix] == alt_prot[prefix]) ++prefix;
+    std::size_t suffix = 0;
+    while (suffix < shorter - prefix
+           && ref_prot[ref_prot.size() - 1 - suffix] == alt_prot[alt_prot.size() - 1 - suffix]) {
+        ++suffix;
+    }
+    const std::string ref_mid = ref_prot.substr(prefix, ref_prot.size() - prefix - suffix);
+    const std::string alt_mid = alt_prot.substr(prefix, alt_prot.size() - prefix - suffix);
+    const int ref_beg = static_cast<int>(prefix) + 1;
+    const int ref_end = static_cast<int>(ref_prot.size() - suffix);
+
+    if (ref_mid.empty()) {
+        const int left = ref_beg - 1;
+        if (left < 1) return "p.0_" + aa_three(ref_prot[0]) + "1ins" + inserted_residues(alt_mid);
+        return "p." + aa_three(ref_prot[left - 1]) + std::to_string(left) + "_"
+            + aa_three(ref_prot[left]) + std::to_string(left + 1) + "ins"
+            + inserted_residues(alt_mid);
+    }
+    if (alt_mid.empty()) {
+        return "p." + aa_three(ref_mid.front()) + std::to_string(ref_beg) + "_"
+            + aa_three(ref_mid.back()) + std::to_string(ref_end) + "del";
+    }
+    // Trimming can leave the inserted/deleted residues attached to either end of
+    // the changed reference span. Recognise that so a plain insertion or
+    // deletion is not reported as a delins.
+    if (alt_mid.size() > ref_mid.size()) {
+        const std::size_t extra = alt_mid.size() - ref_mid.size();
+        if (alt_mid.compare(0, ref_mid.size(), ref_mid) == 0) {
+            const std::string inserted = alt_mid.substr(ref_mid.size());
+            const int left = ref_end;
+            if (left >= 1 && left < static_cast<int>(ref_prot.size())) {
+                return "p." + aa_three(ref_prot[left - 1]) + std::to_string(left) + "_"
+                    + aa_three(ref_prot[left]) + std::to_string(left + 1) + "ins"
+                    + inserted_residues(inserted);
+            }
+        }
+        if (alt_mid.compare(extra, ref_mid.size(), ref_mid) == 0) {
+            const std::string inserted = alt_mid.substr(0, extra);
+            const int right = ref_beg;
+            if (right >= 2 && right <= static_cast<int>(ref_prot.size())) {
+                return "p." + aa_three(ref_prot[right - 2]) + std::to_string(right - 1) + "_"
+                    + aa_three(ref_prot[right - 1]) + std::to_string(right) + "ins"
+                    + inserted_residues(inserted);
+            }
+        }
+    } else if (ref_mid.size() > alt_mid.size()) {
+        const std::size_t extra = ref_mid.size() - alt_mid.size();
+        if (ref_mid.compare(0, alt_mid.size(), alt_mid) == 0) {
+            const std::string deleted = ref_mid.substr(alt_mid.size());
+            const int beg = ref_beg + static_cast<int>(alt_mid.size());
+            return "p." + aa_three(deleted.front()) + std::to_string(beg) + "_"
+                + aa_three(deleted.back()) + std::to_string(ref_end) + "del";
+        }
+        if (ref_mid.compare(extra, alt_mid.size(), alt_mid) == 0) {
+            const std::string deleted = ref_mid.substr(0, extra);
+            return "p." + aa_three(deleted.front()) + std::to_string(ref_beg) + "_"
+                + aa_three(deleted.back()) + std::to_string(ref_beg + static_cast<int>(extra) - 1)
+                + "del";
+        }
+    }
+    return "p." + aa_three(ref_mid.front()) + std::to_string(ref_beg) + "_"
+        + aa_three(ref_mid.back()) + std::to_string(ref_end) + "delins"
+        + inserted_residues(alt_mid);
 }
 
 }  // namespace
@@ -264,6 +402,285 @@ std::vector<CdsVariantAnnotation> CdsAnnotator::annotate_snp(
                   return a.transcript_id < b.transcript_id;
               });
     return hits;
+}
+
+const CdsAnnotator::TranscriptStructure* CdsAnnotator::structure(
+    const std::string& transcript_id) const {
+    const auto cached = structures_.find(transcript_id);
+    if (cached != structures_.end()) {
+        return cached->second ? &*cached->second : nullptr;
+    }
+    std::optional<TranscriptStructure> built;
+    const auto seq_it = cds_seqs_.find(transcript_id);
+    if (index_ && seq_it != cds_seqs_.end()) {
+        TranscriptStructure st;
+        for (const auto& child : index_->children_of(transcript_id)) {
+            if (child.type == "CDS") st.cds.push_back(child);
+            else if (child.type == "exon") st.exons.push_back(child);
+        }
+        if (!st.cds.empty()) {
+            std::sort(st.cds.begin(), st.cds.end(),
+                      [](const gffsub::GffRecord& a, const gffsub::GffRecord& b) {
+                          return a.start < b.start;
+                      });
+            std::sort(st.exons.begin(), st.exons.end(),
+                      [](const gffsub::GffRecord& a, const gffsub::GffRecord& b) {
+                          return a.start < b.start;
+                      });
+            st.minus = st.cds.front().strand == '-';
+            const auto tx = index_->find_by_id(transcript_id);
+            if (tx && tx->parent_id) st.gene_id = *tx->parent_id;
+            st.protein = translate_seq(seq_it->second);
+            // Exon-exon junctions that fall inside the CDS: the end of every
+            // CDS span except the last (spans are genomic-ascending, and the
+            // spliced CDS runs through them in that order on the plus strand
+            // and in reverse on the minus strand, so the set of boundary
+            // coordinates is the same either way).
+            int64_t cum = 0;
+            for (std::size_t i = 0; i + 1 < st.cds.size(); ++i) {
+                cum += st.cds[i].end - st.cds[i].start + 1;
+                st.junctions.push_back(cum);
+            }
+            built = std::move(st);
+        }
+    }
+    auto& slot = structures_[transcript_id];
+    slot = std::move(built);
+    return slot ? &*slot : nullptr;
+}
+
+std::vector<CdsHaplotypeAnnotation> CdsAnnotator::annotate_haplotype(
+    const std::string& chrom, const std::vector<HaplotypeVariant>& variants) const {
+    std::vector<CdsHaplotypeAnnotation> out;
+    if (!index_ || variants.empty()) return out;
+
+    // Transcripts whose CDS is touched by at least one variant.
+    std::vector<std::string> transcript_ids;
+    for (const auto& variant : variants) {
+        for (const auto& rec : index_->overlap(chrom, variant.pos, variant.pos + static_cast<int64_t>(variant.ref.size()) - 1)) {
+            if (rec.type != "CDS" || !rec.parent_id) continue;
+            if (std::find(transcript_ids.begin(), transcript_ids.end(), *rec.parent_id) == transcript_ids.end()) {
+                transcript_ids.push_back(*rec.parent_id);
+            }
+        }
+    }
+    std::sort(transcript_ids.begin(), transcript_ids.end());
+
+    for (const auto& transcript_id : transcript_ids) {
+        const TranscriptStructure* st = structure(transcript_id);
+        if (st == nullptr) continue;
+
+        // Map every variant into CDS coordinates and apply it to a copy of the
+        // reference CDS. Variants are applied right to left so that earlier
+        // coordinates stay valid as indels shift the sequence.
+        struct Applied {
+            int cds_pos = 0;
+            std::string ref;
+            std::string alt;
+            std::size_t order = 0;
+        };
+        std::vector<Applied> todo;
+        CdsHaplotypeAnnotation ann;
+        ann.transcript_id = transcript_id;
+        ann.gene_id = st->gene_id;
+        ann.aa_ref_len = static_cast<int>(st->protein.size());
+
+        std::size_t order = 0;
+        for (const auto& variant : variants) {
+            ++order;
+            int64_t cds_pos = 0;
+            bool in_cds = false;
+            int64_t span_upper = 0;   // genomic end of the span holding the variant
+            if (!st->minus) {
+                for (const auto& span : st->cds) {
+                    if (variant.pos >= span.start && variant.pos <= span.end) {
+                        cds_pos += (variant.pos - span.start) + 1;
+                        span_upper = span.end;
+                        in_cds = true;
+                        break;
+                    }
+                    cds_pos += span.end - span.start + 1;
+                }
+            } else {
+                for (auto it = st->cds.rbegin(); it != st->cds.rend(); ++it) {
+                    if (variant.pos >= it->start && variant.pos <= it->end) {
+                        cds_pos += (it->end - variant.pos) + 1;
+                        span_upper = it->end;
+                        in_cds = true;
+                        break;
+                    }
+                    cds_pos += it->end - it->start + 1;
+                }
+            }
+            if (!in_cds) continue;   // variant sits outside this transcript's CDS
+
+            std::string ref = variant.ref;
+            std::string alt = variant.alt;
+            if (st->minus) {
+                ref = reverse_complement(ref);
+                alt = reverse_complement(alt);
+            }
+            // A REF that runs past the end of the containing CDS span crosses
+            // an exon junction, where the genomic sequence is not contiguous in
+            // the spliced CDS.
+            const bool spans_junction =
+                variant.pos + static_cast<int64_t>(variant.ref.size()) - 1 > span_upper;
+            if (spans_junction) {
+                ann.skipped.push_back("c." + std::to_string(cds_pos) + " spans exon junction");
+                continue;
+            }
+            todo.push_back(Applied{static_cast<int>(cds_pos), ref, alt, order});
+        }
+
+        // Keep the entry when variants were rejected so the reason is visible;
+        // drop it only when nothing about this transcript's CDS is affected.
+        if (todo.empty() && ann.skipped.empty()) continue;
+
+        const std::string ref_cds = cds_seqs_.at(transcript_id);
+        std::string cds = ref_cds;
+        std::sort(todo.begin(), todo.end(), [](const Applied& a, const Applied& b) {
+            if (a.cds_pos != b.cds_pos) return a.cds_pos > b.cds_pos;
+            return a.order > b.order;
+        });
+
+        int nt_delta = 0;
+        int n_ins = 0;
+        int n_del = 0;
+        bool has_indel = false;
+        std::vector<Applied> applied;
+        for (const auto& item : todo) {
+            const std::size_t beg = static_cast<std::size_t>(item.cds_pos) - 1;
+            if (beg + item.ref.size() > cds.size() || cds.compare(beg, item.ref.size(), item.ref) != 0) {
+                ann.skipped.push_back("c." + std::to_string(item.cds_pos)
+                                      + " REF does not match the CDS sequence");
+                continue;
+            }
+            cds.replace(beg, item.ref.size(), item.alt);
+            nt_delta += static_cast<int>(item.alt.size()) - static_cast<int>(item.ref.size());
+            if (item.alt.size() > item.ref.size()) ++n_ins;
+            else if (item.alt.size() < item.ref.size()) ++n_del;
+            if (item.alt.size() != item.ref.size()) has_indel = true;
+            applied.push_back(item);
+        }
+        if (applied.empty()) {
+            // Every variant was rejected: keep the entry so the reasons are
+            // reported, but leave the consequence fields empty.
+            ann.effect = "-";
+            out.push_back(std::move(ann));
+            continue;
+        }
+
+        // Report DNA changes in ascending CDS order.
+        std::sort(applied.begin(), applied.end(), [](const Applied& a, const Applied& b) {
+            return a.cds_pos < b.cds_pos;
+        });
+        for (const auto& item : applied) {
+            if (!ann.dna_change.empty()) ann.dna_change += "+";
+            ann.dna_change += format_dna_change(item.cds_pos, item.ref, item.alt);
+        }
+
+        // Only the region up to the first stop codon is protein; codons past it
+        // are not translated, so compare the truncated sequences. This also
+        // keeps a mis-annotated reference (internal stop) from producing
+        // nonsense calls for variants that sit after it.
+        const auto truncate_at_stop = [](const std::string& protein) {
+            const auto stop = protein.find('*');
+            return stop == std::string::npos ? protein : protein.substr(0, stop + 1);
+        };
+        const auto protein_length = [](const std::string& protein) {
+            return static_cast<int>(protein.size()) - (protein.empty() || protein.back() != '*' ? 0 : 1);
+        };
+        const std::string ref_prot = truncate_at_stop(st->protein);
+        const std::string alt_prot = truncate_at_stop(translate_seq(cds));
+        ann.nt_delta = nt_delta;
+        ann.aa_ref_len = protein_length(ref_prot);
+        ann.aa_alt_len = protein_length(alt_prot);
+
+        if (ref_prot.find('*') == std::string::npos) {
+            ann.note = "reference CDS has no stop codon";
+        } else if (ref_prot.size() != st->protein.size()) {
+            ann.note = "reference CDS has an internal stop at codon "
+                + std::to_string(ref_prot.size());
+        }
+
+        int first_diff = 0;
+        const std::size_t comparable = std::min(ref_prot.size(), alt_prot.size());
+        for (std::size_t i = 0; i < comparable; ++i) {
+            if (ref_prot[i] != alt_prot[i]) {
+                first_diff = static_cast<int>(i) + 1;
+                break;
+            }
+        }
+        if (first_diff == 0 && ref_prot.size() != alt_prot.size()) {
+            first_diff = static_cast<int>(comparable) + 1;
+        }
+        ann.first_diff_aa = first_diff;
+
+        const std::size_t ref_stop = ref_prot.find('*');
+        const std::size_t alt_stop = alt_prot.find('*');
+        const bool premature_stop = alt_stop != std::string::npos
+            && (ref_stop == std::string::npos || alt_stop < ref_stop);
+        ann.ptc_codon = premature_stop ? static_cast<int>(alt_stop) + 1 : 0;
+
+        if (ref_prot == alt_prot) {
+            ann.effect = "synonymous_variant";
+        } else if (first_diff == 1 && ref_cds.compare(0, 3, "ATG") == 0) {
+            // The reference start codon is gone (csq calls this start_lost
+            // whether or not the change is also a frameshift).
+            ann.effect = "start_lost";
+        } else if (nt_delta % 3 != 0) {
+            ann.effect = "frameshift_variant";
+        } else if (has_indel) {
+            // Frame preserved, but the haplotype carries indels: an insertion
+            // and a deletion that cancel out still counts as inframe_altering.
+            ann.effect = (n_ins > 0 && n_del > 0) ? "inframe_altering"
+                : (nt_delta > 0 ? "inframe_insertion" : "inframe_deletion");
+        } else if (premature_stop) {
+            ann.effect = "stop_gained";
+        } else if (ref_stop != std::string::npos
+                   && (alt_stop == std::string::npos || alt_stop > ref_stop)) {
+            ann.effect = "stop_lost";
+        } else {
+            ann.effect = "missense_variant";
+        }
+
+        // Protein change in SnpEff/HGVS style.
+        if (ann.effect == "synonymous_variant") {
+            ann.protein_change = "p.(=)";
+        } else if (ann.effect == "start_lost") {
+            ann.protein_change = "p." + aa_three(ref_prot[0]) + "1?";
+        } else if (ann.effect == "stop_gained") {
+            ann.protein_change = "p." + aa_three(ref_prot[ann.ptc_codon - 1])
+                + std::to_string(ann.ptc_codon) + "Ter";
+        } else if (ann.effect == "frameshift_variant") {
+            const int aa_pos = first_diff > 0 ? first_diff : 1;
+            const int distance = ann.ptc_codon > 0 ? ann.ptc_codon - aa_pos + 1 : 0;
+            ann.protein_change = "p." + aa_three(ref_prot[aa_pos - 1]) + std::to_string(aa_pos)
+                + "fs" + (ann.ptc_codon > 0 ? "Ter" + std::to_string(distance) : "?");
+        } else if (ann.effect == "stop_lost") {
+            const int stop_codon = static_cast<int>(ref_stop) + 1;
+            const std::string new_aa = alt_stop != std::string::npos && alt_stop < alt_prot.size()
+                ? aa_three(alt_prot[ref_stop]) : std::string("?");
+            ann.protein_change = "p.Ter" + std::to_string(stop_codon) + new_aa + "extTer?";
+        } else if (!has_indel) {
+            ann.protein_change = format_substitution_list(ref_prot, alt_prot);
+        } else {
+            ann.protein_change = format_indel_change(ref_prot, alt_prot);
+        }
+
+        // NMD: a PTC more than 50 nt upstream of the last exon-exon junction
+        // triggers nonsense-mediated decay.
+        if (ann.ptc_codon > 0 && !st->junctions.empty()) {
+            const int64_t ptc_cds = (static_cast<int64_t>(ann.ptc_codon) - 1) * 3 + 1;
+            const int64_t last_junction = st->junctions.back();
+            ann.nmd = (last_junction - ptc_cds) > 50 ? "NMD_sensitive" : "NMD_escape";
+        } else if (ann.ptc_codon > 0) {
+            ann.nmd = "NMD_escape";   // single-exon CDS: no junction to trigger NMD
+        }
+
+        out.push_back(std::move(ann));
+    }
+    return out;
 }
 
 }  // namespace haplokit
