@@ -3,11 +3,12 @@
 #include "tcs_algorithm.h"
 #include "msn_algorithm.h"
 #include "mjn_algorithm.h"
-#include "../third_party/json.hpp"
+#include <nlohmann/json.hpp>
 #include <iostream>
 #include <sstream>
 #include <algorithm>
 #include <cctype>
+#include <stdexcept>
 
 using json = nlohmann::json;
 
@@ -78,7 +79,9 @@ NetworkBackend::InputData NetworkBackend::parse_input_json(const std::string& js
         }
 
     } catch (const json::exception& e) {
-        std::cerr << "JSON parse error: " << e.what() << "\n";
+        // Propagate instead of returning empty data: the caller treats a
+        // successful exit as a valid network and would render nothing.
+        throw std::runtime_error(std::string("JSON parse error: ") + e.what());
     }
 
     return data;

@@ -202,6 +202,7 @@ def build_parser() -> HaolokitArgumentParser:
     view.set_defaults(show_map_counts=False)
     view_network.add_argument("-n", "--network", action="store_true", help="render haplotype network plot")
     view_network.add_argument("-N", "--network-method", choices=["tcs", "msn", "mjn"], default="tcs", help="haplotype network inference method")
+    view_network.add_argument("--network-epsilon", type=_nonnegative_int_value, default=0, help="extra mutation steps allowed above the Steiner bound when adding MJN median vertices")
     view_labeling.add_argument("-H", "--hap-prefix", default="Hap", help="haplotype label prefix")
     view_labeling.add_argument("-D", "--hap-pad", type=_hap_pad_value, default=2, help="zero-padding width for haplotype labels")
 
@@ -906,6 +907,7 @@ def _compose_row(
         "max_diff": backend_row["max_diff"],
         "variant_count": backend_row["variant_count"],
         "sample_count": backend_row["sample_count"],
+        "analyzed_sample_count": backend_row.get("analyzed_sample_count", backend_row["sample_count"]),
         "haplotype_count": backend_row["haplotype_count"],
         "sites": backend_row.get("sites", []),
     }
@@ -1048,6 +1050,7 @@ def _write_plot_artifacts(
                 pop_data=pop_data_net, title=gene_name,
                 fmt=args.plot_format,
                 algorithm=args.network_method,
+                epsilon=args.network_epsilon,
             ))
         written.append(artifact_paths)
 

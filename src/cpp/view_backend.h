@@ -42,7 +42,13 @@ struct PopulationBreakdownRow {
 
 struct HaplotypeSummaryRow {
     std::string id;
+    // Grouping key: the exact allele pattern in strict mode, the cluster label
+    // ("A001") in --max-diff mode.
     std::string hap;
+    // Pipe-delimited allele pattern this row represents. Equals hap in strict
+    // mode; in --max-diff mode it is the cluster representative's pattern, so
+    // per-site states and network distances stay meaningful.
+    std::string pattern;
     std::vector<std::string> states;
     // Composite CDS consequence for this haplotype, filled only when --cds is
     // active. Format: transcript:effect:protein:dna:nmd, joined with ';' across
@@ -79,7 +85,12 @@ struct ViewResult {
     std::string hap_prefix = "Hap";
     int hap_pad = 2;
     int variant_count = 0;
+    // Samples resolved from the VCF (after --samples-file).
     int sample_count = 0;
+    // Samples that produced a haplotype, i.e. the denominator behind the
+    // per-haplotype counts. Lower than sample_count when strict grouping drops
+    // heterozygous or missing calls.
+    int analyzed_sample_count = 0;
     int haplotype_count = 0;
     std::vector<SiteRow> sites;
     std::vector<HaplotypeSummaryRow> haplotypes;

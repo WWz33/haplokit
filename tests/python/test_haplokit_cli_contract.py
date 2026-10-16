@@ -383,9 +383,13 @@ def test_main_still_supports_jsonl_when_explicitly_requested(tmp_path: Path, ind
     assert first_hap["id"] == "Hap01"
     assert first_hap["pattern"] == first_hap["hap"]
     assert first_hap["count"] > 0
-    assert first_hap["total"] == payload["sample_count"]
+    # Frequencies divide by the samples that received a haplotype, not by every
+    # sample in the region: strict grouping drops heterozygous calls.
+    assert payload["analyzed_sample_count"] <= payload["sample_count"]
+    assert first_hap["total"] == payload["analyzed_sample_count"]
     assert first_hap["frequency"] > 0
-    assert first_hap["frequency_label"] == f"{first_hap['count']}/{payload['sample_count']}"
+    assert first_hap["frequency_label"] == f"{first_hap['count']}/{payload['analyzed_sample_count']}"
+    assert sum(hap["count"] for hap in payload["haplotypes"]) == payload["analyzed_sample_count"]
     assert first_hap["states"]
     assert first_hap["samples"]
 

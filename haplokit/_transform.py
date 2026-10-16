@@ -40,9 +40,18 @@ def _unique_alleles(rows: list[list[str]], var_end: int) -> list[str]:
     return sorted(alleles)
 
 
+def _is_haplotype_row(label: str, meta: set[str]) -> bool:
+    """True for data rows, i.e. anything that is not a metadata row.
+
+    Testing for a leading "H" broke as soon as --hap-prefix named something
+    else (-H A): the sample list stayed in the count column, the n/N values
+    were dropped, and indel abbreviation was skipped.
+    """
+    return label not in meta and label not in {"CHR", "INFO"}
+
+
 def _indel_footnotes(rows: list[list[str]], var_end: int) -> tuple[list[list[str]], str]:
     """Replace long indel alleles with i1/i2/... and return footnote string."""
-    meta = {"POS", "ALLELE"}
     allele_row = next((r for r in rows if r and r[0] == "ALLELE"), None)
     if allele_row is None:
         return rows, ""
@@ -65,7 +74,9 @@ def _indel_footnotes(rows: list[list[str]], var_end: int) -> tuple[list[list[str
     new_rows: list[list[str]] = []
     for row in rows:
         new_row = list(row)
-        if row[0] in meta or row[0].startswith("H"):
+        # POS and ALLELE carry allele text too, so abbreviate every row that
+        # reaches the allele columns.
+        if row[0] not in {"CHR", "INFO"}:
             for c in range(1, min(var_end, len(new_row))):
                 cell = new_row[c]
                 for k, v in notes.items():
@@ -161,7 +172,7 @@ def transform_for_display(
             pop_headers = pop_names + ["n/N"]
             new_row = new_row[:var_end_col] + pop_headers
 
-        elif new_row[0].startswith("H") and acc_col is not None and var_end_col is not None:
+        elif _is_haplotype_row(new_row[0], {"POS", "ALLELE"}) and acc_col is not None and var_end_col is not None:
             target_col = acc_col
             if target_col < len(new_row):
                 raw = new_row[target_col].strip()

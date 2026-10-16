@@ -37,13 +37,6 @@ private:
 
     // Remove obsolete vertices (degree < 3 median vertices)
     static bool remove_obsolete_vertices(Graph& graph);
-
-    // Check if adding median reduces network length
-    static bool is_feasible_median(
-        const Graph& graph,
-        const std::string& median,
-        int u, int v, int w
-    );
 };
 
 } // namespace network

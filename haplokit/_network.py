@@ -331,6 +331,7 @@ def plot_hap_network(
     dpi: int = 600,
     fmt: str | None = None,
     algorithm: str = "tcs",
+    epsilon: int = 0,
 ) -> Path:
     """Render a TCS-style haplotype network in popart's visual style.
 
@@ -349,6 +350,8 @@ def plot_hap_network(
         legend_font_size: Legend text size.
         dpi: Output resolution for raster formats.
         fmt: Output format override.
+        epsilon: Tolerance for adding median vertices in the MJN algorithm,
+            counted in mutation steps above the triplet's Steiner bound.
     """
     n = len(hap_names)
     if n == 0:
@@ -359,7 +362,7 @@ def plot_hap_network(
     # ---- Build network -----------------------------------------------------
     samples = [[name] * max(int(count), 1) for name, count in zip(hap_names, hap_counts)]
     from .network import compute_network
-    network = compute_network(hap_strings, samples, algorithm=algorithm)
+    network = compute_network(hap_strings, samples, algorithm=algorithm, epsilon=epsilon)
     node_index = {node["id"]: idx for idx, node in enumerate(network["nodes"])}
     edges = [
         (

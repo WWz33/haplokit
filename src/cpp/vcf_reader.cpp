@@ -146,6 +146,10 @@ RegionData VcfReader::fetch_targets(const std::vector<Region>& targets, const st
 
         bcf_sr_set_opt(sr, BCF_SR_REQUIRE_IDX);
         if (!bcf_sr_add_reader(sr, path_.c_str())) {
+            // htslib bumps nreaders before the index check that just failed, but
+            // only fills aux->closefile once the reader is fully built, so
+            // bcf_sr_destroy would read a NULL array. Drop the partial reader.
+            sr->nreaders = 0;
             throw std::runtime_error("failed to add indexed VCF/BCF reader: " + std::string(bcf_sr_strerror(sr->errnum)));
         }
 
@@ -156,15 +160,6 @@ RegionData VcfReader::fetch_targets(const std::vector<Region>& targets, const st
 
         std::vector<int> sample_indexes;
         data.samples = resolve_samples(hdr, samples, &sample_indexes);
-
-        if (!samples.empty()) {
-            std::string sample_list;
-            for (std::size_t i = 0; i < samples.size(); ++i) {
-                if (i > 0) sample_list += ",";
-                sample_list += samples[i];
-            }
-            bcf_sr_set_samples(sr, sample_list.c_str(), 0);
-        }
 
         while (bcf_sr_next_line(sr) > 0) {
             bcf1_t* rec = bcf_sr_get_line(sr, 0);
@@ -202,6 +197,8 @@ RegionData VcfReader::fetch(const Region& region, const std::vector<std::string>
 
         bcf_sr_set_opt(sr, BCF_SR_REQUIRE_IDX);
         if (!bcf_sr_add_reader(sr, path_.c_str())) {
+            // See fetch_targets: the reader count is already incremented here.
+            sr->nreaders = 0;
             throw std::runtime_error("failed to add indexed VCF/BCF reader: " + std::string(bcf_sr_strerror(sr->errnum)));
         }
 
@@ -212,16 +209,6 @@ RegionData VcfReader::fetch(const Region& region, const std::vector<std::string>
 
         std::vector<int> sample_indexes;
         data.samples = resolve_samples(hdr, samples, &sample_indexes);
-
-        // Enable sample subset at the reader level for BCF performance
-        if (!samples.empty()) {
-            std::string sample_list;
-            for (std::size_t i = 0; i < samples.size(); ++i) {
-                if (i > 0) sample_list += ",";
-                sample_list += samples[i];
-            }
-            bcf_sr_set_samples(sr, sample_list.c_str(), 0);
-        }
 
         while (bcf_sr_next_line(sr) > 0) {
             bcf1_t* rec = bcf_sr_get_line(sr, 0);

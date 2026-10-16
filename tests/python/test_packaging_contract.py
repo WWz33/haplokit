@@ -192,6 +192,9 @@ def test_vendored_htscodecs_version_header_is_present_for_sdist_builds() -> None
 
 
 def test_sdist_includes_network_json_header() -> None:
+    # The network backend includes <nlohmann/json.hpp> from the vendored dep;
+    # src/cpp/third_party/json.hpp was a byte-identical copy and was removed.
     manifest = (ROOT / "MANIFEST.in").read_text(encoding="utf-8")
-    assert "recursive-include src/cpp/third_party *.hpp" in manifest
-    assert (ROOT / "src" / "cpp" / "third_party" / "json.hpp").exists()
+    assert "recursive-include deps/nlohmann *.hpp" in manifest
+    assert (ROOT / "deps" / "nlohmann" / "nlohmann" / "json.hpp").exists()
+    assert not (ROOT / "src" / "cpp" / "third_party" / "json.hpp").exists()

@@ -227,6 +227,8 @@ haplokit view in.vcf.gz -r chr1:1000-2000 --network --network-method mjn --plot 
 | `msn` | Minimum spanning network | Based on Hamming distances |
 | `mjn` | Median-joining network | Bandelt et al. (1999) |
 
+At the default `--network-epsilon 0`, a median vertex is added only when it exactly meets a triplet's Steiner bound, so `mjn` often matches `msn`. Raise the value to admit near-optimal medians.
+
 <details>
 <summary><b>Details</b></summary>
 
@@ -366,7 +368,7 @@ Each BED row is processed independently. Output files are named with a region su
 haplokit view in.vcf.gz -r chr1:1000-2000 --max-diff 0.2 --output-file out
 ```
 
-`--max-diff` clusters haplotypes that differ at no more than the given fraction of variant positions. For example, `--max-diff 0.2` merges haplotypes differing at ≤20% of variant sites.
+`--max-diff` clusters haplotypes that differ at no more than the given fraction of variant positions. For example, `--max-diff 0.2` merges haplotypes differing at ≤20% of variant sites. Cluster rows keep the representative's per-site allele pattern, so the table and network figures show real states rather than cluster labels. `--max-diff 0` cannot merge anything and is treated as exact grouping.
 
 ### Sample Subset and Missing-Call Imputation
 
@@ -463,6 +465,7 @@ haplokit view <input.vcf.gz|input.bcf> (-r <region> | -R <regions.bed> | -t <tar
 | `--hide-counts` | off | Hide sample-count labels (default) |
 | `-n, --network` | off | Render haplotype network |
 | `-N, --network-method` | `tcs` | Network algorithm: `tcs`, `msn`, or `mjn` |
+| `--network-epsilon` | `0` | Extra mutation steps allowed above the Steiner bound when adding MJN medians |
 
 **Labeling options**:
 
@@ -588,27 +591,45 @@ make clean
 
 #### `hapresult.tsv`
 
-Main output from `haplokit view`. Contains haplotype definitions and sample assignments.
+Per-sample haplotype assignments from `haplokit view`, one row per sample.
 
-| Column | Type | Description |
-| --- | --- | --- |
-| `Hap` | string | Haplotype label (e.g., Hap01, Hap02) |
-| `Count` | integer | Number of samples with this haplotype |
-| `Freq` | float | Frequency (0-1) |
-| `State` | string | Allele pattern, pipe-delimited (e.g., `0\|0\|1\|0`) |
-| `Samples` | string | Comma-separated sample IDs |
-| `{Pop1}`, `{Pop2}`, ... | integer | Per-population counts (only if `-p` provided) |
+```text
+CHR     scaffold_1  scaffold_1  ...  Haplotypes:  8
+POS     4300        4345        ...  Individuals: 37
+INFO    .           .           ...  Variants:    7
+ALLELE  G/C         T/A,GG      ...  Accession
+Hap01   G           T           ...  C8;C9;C11;...
+```
+
+| Row | Contents |
+| --- | --- |
+| `CHR`, `POS`, `INFO`, `ALLELE` | Region metadata and the per-site allele text |
+| Data rows | One sample per row: haplotype label, per-site allele, sample ID |
+
+With `-p`, a `Population` column is added before `Accession`.
 
 #### `hap_summary.tsv`
 
-Simplified summary of haplotype counts.
+Per-haplotype summary from `haplokit view`, one row per haplotype.
 
-| Column | Type | Description |
-| --- | --- | --- |
-| `Hap` | string | Haplotype label |
-| `Count` | integer | Total count |
-| `Freq` | float | Frequency |
-| `Samples` | string | Sample list |
+```text
+CHR     scaffold_1  scaffold_1  ...  Haplotypes:  8
+POS     4300        4345        ...  Individuals: 37
+INFO    .           .           ...  Variants:    7
+ALLELE  G/C         T/A,GG      ...  Accession  freq
+Hap01   G           T           ...  C8;C9;C11;...  10
+```
+
+| Column | Contents |
+| --- | --- |
+| Data rows | Haplotype label, per-site allele, sample IDs, sample count |
+| `Accession` | Semicolon-separated sample IDs carrying the haplotype |
+| `freq` | Sample count for the haplotype |
+
+With `-p`, `<population>_n` and `<population>_Accession` column pairs are added
+before `Accession`. The `freq` column holds the sample count, and its denominator
+is the number of samples that received a haplotype, which the `Individuals:`
+header also reports.
 
 #### `gff_ann_summary.tsv`
 

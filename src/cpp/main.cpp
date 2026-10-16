@@ -98,9 +98,6 @@ std::vector<haplokit::Region> parse_target_regions(const std::string& value) {
         }
 
         auto region = haplokit::parse_region(token);
-        if (region.start > region.end) {
-            throw std::runtime_error("target region start must be <= end: " + token);
-        }
         if (chrom.empty()) {
             chrom = region.chrom;
         } else if (region.chrom != chrom) {
@@ -409,8 +406,14 @@ std::vector<haplokit::Region> load_bed_regions(const std::string& path) {
 
         haplokit::Region region;
         region.chrom = fields[0];
-        region.start = std::stoi(fields[1]);
+        // BED is 0-based half-open; Region and the VCF query are 1-based
+        // inclusive, so the left edge shifts by one. The right edge already
+        // matches (a BED end of N is exclusive, meaning 1-based base N).
+        region.start = std::stoi(fields[1]) + 1;
         region.end = std::stoi(fields[2]);
+        if (region.start > region.end) {
+            throw std::runtime_error("BED region start must be <= end: " + line);
+        }
         regions.push_back(region);
     }
     return regions;
@@ -621,10 +624,9 @@ int run_view_bed_jsonl(int argc, char** argv) {
         apply_haplotype_cds_annotation(result, *cds_annotator, data.variants.empty() ? std::string() : data.variants.front().chrom);
         }
         if (annotator.has_value()) {
-            // BED is 0-based half-open; GFF annotation needs 1-based inclusive
-            int64_t gff_start = regions[idx].start + 1;
-            int64_t gff_end = regions[idx].end;
-            result.annotation = annotator->annotate(regions[idx].chrom, gff_start, gff_end);
+            // Region coordinates are already 1-based inclusive (load_bed_regions
+            // converts the BED left edge), which is what GFF annotation expects.
+            result.annotation = annotator->annotate(regions[idx].chrom, regions[idx].start, regions[idx].end);
         }
 
         std::cout << haplokit::serialize_view_result_json(result) << "\n";

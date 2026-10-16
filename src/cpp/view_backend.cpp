@@ -6,6 +6,7 @@
 #include <map>
 #include <nlohmann/json.hpp>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 
@@ -108,9 +109,18 @@ std::string population_for_sample(const ViewOptions& options, const std::string&
     return found->second;
 }
 
-std::map<std::string, int> population_totals(const ViewOptions& options) {
+std::map<std::string, int> population_totals(
+    const ViewOptions& options,
+    const std::vector<std::string>& resolved_samples) {
+    // Only samples that survived sample selection count towards a population
+    // total. Reading the whole population file made `--samples-file` report
+    // e.g. "wild 1/12" in a file whose own header said "Individuals: 3".
+    std::set<std::string> selected(resolved_samples.begin(), resolved_samples.end());
     std::map<std::string, int> totals;
     for (const auto& entry : options.sample_populations) {
+        if (selected.count(entry.first) == 0) {
+            continue;
+        }
         totals[entry.second] += 1;
     }
     return totals;
@@ -142,7 +152,8 @@ std::vector<HaplotypeDetailRow> build_sample_profiles(const RegionData& data, co
 std::vector<HaplotypeDetailRow> build_approx_accessions(
     const RegionData& data,
     const ViewOptions& options,
-    double max_diff) {
+    double max_diff,
+    std::map<std::string, std::string>* cluster_patterns) {
     auto raw_profiles = build_sample_profiles(data, options);
 
     std::vector<HaplotypeDetailRow> rows;
@@ -183,6 +194,9 @@ std::vector<HaplotypeDetailRow> build_approx_accessions(
             assigned = label.str();
             representatives.push_back(states);
             labels.push_back(*assigned);
+            if (cluster_patterns != nullptr) {
+                (*cluster_patterns)[*assigned] = states_str;
+            }
         }
         rows.push_back(HaplotypeDetailRow{sample_name, *assigned, profile.population});
     }
@@ -193,7 +207,8 @@ std::vector<HaplotypeSummaryRow> summarize_accessions(
     const std::vector<HaplotypeDetailRow>& accessions,
     const std::vector<SiteRow>& sites,
     const ViewOptions& options,
-    int total) {
+    const std::vector<std::string>& resolved_samples,
+    const std::map<std::string, std::string>& cluster_patterns) {
     std::map<std::string, int> counts;
     std::map<std::string, std::vector<std::string>> samples_by_hap;
     std::map<std::string, std::map<std::string, std::vector<std::string>>> samples_by_hap_population;
@@ -204,14 +219,21 @@ std::vector<HaplotypeSummaryRow> summarize_accessions(
             samples_by_hap_population[accession.hap][accession.population].push_back(accession.sample);
         }
     }
-    const auto totals_by_population = population_totals(options);
+    const auto totals_by_population = population_totals(options, resolved_samples);
+
+    // Denominator for haplotype frequencies: the samples that actually got a
+    // haplotype. Using the resolved sample count published frequencies that did
+    // not sum to 1 whenever strict grouping dropped a sample.
+    const int total = static_cast<int>(accessions.size());
 
     std::vector<HaplotypeSummaryRow> rows;
     rows.reserve(counts.size());
     for (const auto& entry : counts) {
         HaplotypeSummaryRow row;
         row.hap = entry.first;
-        row.states = display_states(entry.first, sites);
+        const auto pattern = cluster_patterns.find(entry.first);
+        row.pattern = pattern != cluster_patterns.end() ? pattern->second : entry.first;
+        row.states = display_states(row.pattern, sites);
         row.samples = samples_by_hap[entry.first];
         row.count = entry.second;
         row.total = total;
@@ -248,11 +270,15 @@ std::vector<HaplotypeSummaryRow> summarize_accessions(
 
 ViewResult build_view_result(const RegionData& data, const ViewOptions& options) {
     ViewResult result;
+    // --max-diff 0 cannot merge anything, so treat it as exact grouping. The
+    // approximate path would otherwise relabel the same haplotypes as A001...
+    // and report approx-region for a run that grouped nothing.
+    const bool approximate = options.max_diff.has_value() && *options.max_diff > 0.0;
     result.grouping_mode =
-        options.max_diff.has_value()
+        approximate
             ? (options.by == GroupBy::Region ? "approx-region" : "approx-site")
             : (options.by == GroupBy::Region ? "strict-region" : "strict-site");
-    result.grouping_method = options.max_diff.has_value() ? "max-diff" : "exact";
+    result.grouping_method = approximate ? "max-diff" : "exact";
     result.output_mode = options.output_mode == OutputMode::Both ? "both"
         : options.output_mode == OutputMode::Summary ? "summary" : "detail";
     result.imputed_ref = options.impute;
@@ -275,16 +301,19 @@ ViewResult build_view_result(const RegionData& data, const ViewOptions& options)
     }
 
     std::vector<HaplotypeDetailRow> accessions;
+    std::map<std::string, std::string> cluster_patterns;
     if (!data.variants.empty()) {
-        if (options.max_diff.has_value()) {
-            accessions = build_approx_accessions(data, options, *options.max_diff);
+        if (approximate) {
+            accessions = build_approx_accessions(data, options, *options.max_diff, &cluster_patterns);
         } else {
             accessions = build_sample_profiles(data, options);
         }
     }
 
-    const auto summary = summarize_accessions(accessions, result.sites, options, result.sample_count);
+    const auto summary =
+        summarize_accessions(accessions, result.sites, options, data.samples, cluster_patterns);
     result.haplotype_count = static_cast<int>(summary.size());
+    result.analyzed_sample_count = static_cast<int>(accessions.size());
 
     // Always populate both fields for Both mode; otherwise per output_mode
     if (options.output_mode == OutputMode::Both) {
@@ -308,6 +337,7 @@ std::string serialize_view_result_json(const ViewResult& result) {
     j["max_diff"] = result.max_diff.has_value() ? json(*result.max_diff) : json(nullptr);
     j["output_mode"] = result.output_mode;
     j["sample_count"] = result.sample_count;
+    j["analyzed_sample_count"] = result.analyzed_sample_count;
     j["variant_count"] = result.variant_count;
     j["haplotype_label"] = {{"prefix", result.hap_prefix}, {"pad", result.hap_pad}};
 
@@ -340,7 +370,7 @@ std::string serialize_view_result_json(const ViewResult& result) {
                 {"frequency_label", h.frequency_label},
                 {"hap", h.hap},
                 {"id", h.id},
-                {"pattern", h.hap},
+                {"pattern", h.pattern},
                 {"populations", populations},
                 {"samples", h.samples},
                 {"states", h.states},

@@ -73,7 +73,9 @@ int MJNAlgorithm::compute_median_cost(
 bool MJNAlgorithm::remove_obsolete_vertices(Graph& graph) {
     bool changed = false;
 
-    // Remove median vertices with degree < 3
+    // Remove median vertices with degree < 3. The vertex has to go as well as
+    // its edges: keeping it leaves an isolated node in the output, and the
+    // degree-0 vertex would report a change on every later pass.
     std::vector<int> to_check;
     for (const auto& v : graph.vertices()) {
         if (v.is_median) {
@@ -82,16 +84,8 @@ bool MJNAlgorithm::remove_obsolete_vertices(Graph& graph) {
     }
 
     for (int vid : to_check) {
-        int deg = graph.degree(vid);
-
-        if (deg < 3) {
-            auto neighbors = graph.get_neighbors(vid);
-
-            // Remove all edges to this vertex
-            for (int neighbor : neighbors) {
-                graph.remove_edge(vid, neighbor);
-            }
-
+        if (graph.degree(vid) < 3) {
+            graph.remove_vertex(vid);
             changed = true;
         }
     }
@@ -121,6 +115,10 @@ Graph MJNAlgorithm::compute(const std::vector<Haplotype>& haplotypes, int epsilo
 
         // Find minimum cost median to add
         int min_cost = std::numeric_limits<int>::max();
+        // Sum of the triplet's pairwise distances. A median that achieves the
+        // Steiner bound costs exactly half of this, so this is the baseline the
+        // candidate cost has to be measured against.
+        int best_baseline = std::numeric_limits<int>::max();
         std::string best_median;
         int best_u = -1, best_v = -1, best_w = -1;
 
@@ -142,6 +140,10 @@ Graph MJNAlgorithm::compute(const std::vector<Haplotype>& haplotypes, int epsilo
 
                     if (!vu || !vv || !vw) continue;
 
+                    const int baseline = HammingSIMD::hamming_distance(vu->sequence, vv->sequence) +
+                                         HammingSIMD::hamming_distance(vv->sequence, vw->sequence) +
+                                         HammingSIMD::hamming_distance(vw->sequence, vu->sequence);
+
                     auto medians = compute_quasi_medians(
                         vu->sequence, vv->sequence, vw->sequence
                     );
@@ -156,6 +158,7 @@ Graph MJNAlgorithm::compute(const std::vector<Haplotype>& haplotypes, int epsilo
 
                         if (cost < min_cost) {
                             min_cost = cost;
+                            best_baseline = baseline;
                             best_median = median;
                             best_u = u;
                             best_v = v;
@@ -166,8 +169,10 @@ Graph MJNAlgorithm::compute(const std::vector<Haplotype>& haplotypes, int epsilo
             }
         }
 
-        // Add best median if cost improvement is significant
-        if (!best_median.empty() && min_cost <= epsilon) {
+        // Add the best median when it reaches the triplet's Steiner bound
+        // (cost == baseline/2) within the epsilon tolerance.
+        if (!best_median.empty() && best_baseline != std::numeric_limits<int>::max() &&
+            min_cost <= best_baseline / 2 + epsilon) {
             int median_id = graph.add_median_vertex(best_median);
             all_sequences.insert(best_median);
 
@@ -187,12 +192,6 @@ Graph MJNAlgorithm::compute(const std::vector<Haplotype>& haplotypes, int epsilo
             }
 
             changed = true;
-        }
-
-        // Rebuild MSN with new vertices
-        if (changed) {
-            // Recompute MSN including median vertices
-            // (simplified: in full implementation, would use Floyd-Warshall to remove redundant edges)
         }
 
         // Remove obsolete median vertices

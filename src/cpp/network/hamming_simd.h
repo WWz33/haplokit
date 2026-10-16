@@ -8,6 +8,10 @@
 namespace haplokit {
 namespace network {
 
+// Split a pipe-delimited haplotype state string ("0/0|1/1") into per-site
+// tokens. A string without '|' yields a single token.
+std::vector<std::string> split_state_tokens(const std::string& value);
+
 // SIMD-accelerated Hamming distance calculation
 // Packs 16 nucleotides into 32-bit integers (2-bit encoding: A=00, C=01, G=10, T=11)
 // Processes 8 integers in parallel using AVX2 (256-bit registers)
@@ -28,8 +32,9 @@ public:
     // Pack sequence into 32-bit integers (16 bases per int)
     static std::vector<uint32_t> pack_sequence(const std::string& seq);
 
-    // Compute Hamming distance between two sequences
-    // Returns number of differing positions
+    // Compute Hamming distance between two sequences. Pipe-delimited haplotype
+    // state strings are compared per site token, so one differing site counts
+    // as one mutation.
     static int hamming_distance(const std::string& seq1, const std::string& seq2);
 
     // SIMD-optimized version (requires AVX2)
@@ -40,6 +45,10 @@ public:
 
     // Check if CPU supports AVX2
     static bool has_avx2_support();
+
+    // True when every character is an A/C/G/T nucleotide (any case), the only
+    // input the 2-bit packing represents.
+    static bool is_nucleotide_sequence(const std::string& seq);
 
 private:
     static bool avx2_checked_;

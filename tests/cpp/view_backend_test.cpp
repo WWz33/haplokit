@@ -64,9 +64,28 @@ int run() {
         std::cerr << "expected summary haplotype to include pattern, states, and samples\n";
         return 1;
     }
-    if (first_hap.total != summary.sample_count || first_hap.frequency <= 0.0 ||
-        first_hap.frequency_label != std::to_string(first_hap.count) + "/" + std::to_string(summary.sample_count)) {
+    // The frequency denominator is the number of samples that received a
+    // haplotype, which is below sample_count when strict grouping drops
+    // heterozygous or missing calls.
+    if (summary.analyzed_sample_count <= 0 ||
+        summary.analyzed_sample_count > summary.sample_count) {
+        std::cerr << "unexpected analyzed sample count: " << summary.analyzed_sample_count
+                  << " of " << summary.sample_count << "\n";
+        return 1;
+    }
+    if (first_hap.total != summary.analyzed_sample_count || first_hap.frequency <= 0.0 ||
+        first_hap.frequency_label !=
+            std::to_string(first_hap.count) + "/" + std::to_string(summary.analyzed_sample_count)) {
         std::cerr << "unexpected summary haplotype count/frequency contract\n";
+        return 1;
+    }
+    int summed_counts = 0;
+    for (const auto& hap : summary.haplotypes) {
+        summed_counts += hap.count;
+    }
+    if (summed_counts != summary.analyzed_sample_count) {
+        std::cerr << "haplotype counts do not sum to the frequency denominator: "
+                  << summed_counts << " vs " << summary.analyzed_sample_count << "\n";
         return 1;
     }
 

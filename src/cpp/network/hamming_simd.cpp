@@ -117,9 +117,61 @@ int HammingSIMD::hamming_distance_simd(const uint32_t* packed1, const uint32_t* 
 }
 #endif
 
+std::vector<std::string> split_state_tokens(const std::string& value) {
+    std::vector<std::string> tokens;
+    std::size_t start = 0;
+    while (true) {
+        const auto sep = value.find('|', start);
+        if (sep == std::string::npos) {
+            tokens.push_back(value.substr(start));
+            break;
+        }
+        tokens.push_back(value.substr(start, sep - start));
+        start = sep + 1;
+    }
+    return tokens;
+}
+
+bool HammingSIMD::is_nucleotide_sequence(const std::string& seq) {
+    if (seq.empty()) {
+        return false;
+    }
+    for (char c : seq) {
+        switch (c) {
+            case 'A': case 'a': case 'C': case 'c':
+            case 'G': case 'g': case 'T': case 't':
+                break;
+            default:
+                return false;
+        }
+    }
+    return true;
+}
+
 int HammingSIMD::hamming_distance(const std::string& seq1, const std::string& seq2) {
-    // Use SIMD if available and sequences are long enough
-    if (has_avx2_support() && seq1.size() >= 128 && seq1.size() == seq2.size()) {
+    // Haplotype state strings carry one '|'-separated token per variant site.
+    // Compare per token so a single differing site is one mutation, and so
+    // intermediates stay on token boundaries (never "1/0").
+    if (seq1.find('|') != std::string::npos || seq2.find('|') != std::string::npos) {
+        const auto tokens1 = split_state_tokens(seq1);
+        const auto tokens2 = split_state_tokens(seq2);
+        const std::size_t common = std::min(tokens1.size(), tokens2.size());
+        int dist = 0;
+        for (std::size_t idx = 0; idx < common; ++idx) {
+            if (tokens1[idx] != tokens2[idx]) {
+                ++dist;
+            }
+        }
+        dist += static_cast<int>(tokens1.size() > tokens2.size()
+                                     ? tokens1.size() - tokens2.size()
+                                     : tokens2.size() - tokens1.size());
+        return dist;
+    }
+
+    // The 2-bit packing only represents A/C/G/T; anything else packs to zero
+    // and would make distinct sequences compare equal.
+    if (has_avx2_support() && seq1.size() >= 128 && seq1.size() == seq2.size() &&
+        is_nucleotide_sequence(seq1) && is_nucleotide_sequence(seq2)) {
         auto packed1 = pack_sequence(seq1);
         auto packed2 = pack_sequence(seq2);
         return hamming_distance_simd(packed1.data(), packed2.data(), packed1.size());

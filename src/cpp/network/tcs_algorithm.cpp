@@ -1,21 +1,41 @@
 #include "tcs_algorithm.h"
 #include <algorithm>
 #include <map>
-#include <queue>
 #include <set>
 
 namespace haplokit {
 namespace network {
 
-char TCSAlgorithm::compute_median_base(char base1, char base2) {
-    if (base1 == base2) return base1;
-    // For mismatches, use ambiguity code or first base
-    return base1; // simplified: could use IUPAC ambiguity codes
-}
-
 std::string TCSAlgorithm::generate_intermediate(const std::string& seq1,
                                                  const std::string& seq2,
                                                  int step, int total_steps) {
+    // Haplotype state strings carry one '|'-separated token per variant site,
+    // so swap whole tokens: a character-wise walk would emit impossible
+    // genotypes such as "1/0" midway between "0/0" and "1/1".
+    if (seq1.find('|') != std::string::npos || seq2.find('|') != std::string::npos) {
+        auto tokens1 = split_state_tokens(seq1);
+        const auto tokens2 = split_state_tokens(seq2);
+        std::vector<std::size_t> diff_positions;
+        for (std::size_t i = 0; i < tokens1.size() && i < tokens2.size(); ++i) {
+            if (tokens1[i] != tokens2[i]) {
+                diff_positions.push_back(i);
+            }
+        }
+        const std::size_t changes_to_make =
+            (diff_positions.size() * static_cast<std::size_t>(step)) / static_cast<std::size_t>(total_steps);
+        for (std::size_t i = 0; i < changes_to_make && i < diff_positions.size(); ++i) {
+            tokens1[diff_positions[i]] = tokens2[diff_positions[i]];
+        }
+        std::string joined;
+        for (std::size_t i = 0; i < tokens1.size(); ++i) {
+            if (i > 0) {
+                joined += '|';
+            }
+            joined += tokens1[i];
+        }
+        return joined;
+    }
+
     std::string result = seq1;
     std::vector<int> diff_positions;
 
@@ -41,17 +61,18 @@ void TCSAlgorithm::insert_intermediates(Graph& graph, int u, int v, int distance
 
     if (!vert_u || !vert_v) return;
 
-    std::vector<int> intermediate_ids;
+    // add_median_vertex below can reallocate Graph::vertices_, which would
+    // invalidate these pointers, so copy the sequences out first.
+    const std::string seq_u = vert_u->sequence;
+    const std::string seq_v = vert_v->sequence;
+
     int prev_id = u;
 
     // Create intermediate vertices
     for (int step = 1; step < distance; ++step) {
-        std::string intermediate_seq = generate_intermediate(
-            vert_u->sequence, vert_v->sequence, step, distance
-        );
+        std::string intermediate_seq = generate_intermediate(seq_u, seq_v, step, distance);
 
         int intermediate_id = graph.add_median_vertex(intermediate_seq);
-        intermediate_ids.push_back(intermediate_id);
 
         // Connect previous vertex to this intermediate
         graph.add_edge(prev_id, intermediate_id, 1);
@@ -60,14 +81,6 @@ void TCSAlgorithm::insert_intermediates(Graph& graph, int u, int v, int distance
 
     // Connect last intermediate to target
     graph.add_edge(prev_id, v, 1);
-}
-
-void TCSAlgorithm::update_shortest_paths(Graph& graph,
-                                          const std::vector<int>& affected_vertices,
-                                          std::vector<std::vector<int>>& dist_matrix) {
-    // Subset Floyd-Warshall: only update paths involving affected vertices
-    // Complexity: O(k³) where k = |affected_vertices| << n
-    graph.floyd_warshall_subset(affected_vertices, dist_matrix);
 }
 
 Graph TCSAlgorithm::compute(const std::vector<Haplotype>& haplotypes) {
@@ -147,26 +160,36 @@ Graph TCSAlgorithm::compute(const std::vector<Haplotype>& haplotypes) {
         }
     }
 
-    // Remove degree-2 intermediate vertices (collapse linear paths)
-    std::vector<int> to_remove;
-    for (const auto& vertex : graph.vertices()) {
-        if (vertex.is_median && graph.degree(vertex.id) == 2) {
-            auto neighbors = graph.get_neighbors(vertex.id);
-            if (neighbors.size() == 2) {
-                int n1 = neighbors[0];
-                int n2 = neighbors[1];
-                int w1 = graph.get_edge_weight(vertex.id, n1);
-                int w2 = graph.get_edge_weight(vertex.id, n2);
-
-                // Remove old edges and vertex
-                graph.remove_edge(vertex.id, n1);
-                graph.remove_edge(vertex.id, n2);
-
-                // Add direct edge
-                graph.add_edge(n1, n2, w1 + w2);
-
+    // Remove degree-2 intermediate vertices (collapse linear paths). Collapsing
+    // one vertex can drop a neighbour to degree 2, so repeat until stable.
+    bool collapsed = true;
+    while (collapsed) {
+        collapsed = false;
+        std::vector<int> to_remove;
+        for (const auto& vertex : graph.vertices()) {
+            if (vertex.is_median && graph.degree(vertex.id) == 2) {
                 to_remove.push_back(vertex.id);
             }
+        }
+        for (int vid : to_remove) {
+            // An earlier collapse in this batch may have taken this vertex out.
+            if (graph.get_vertex(vid) == nullptr) {
+                continue;
+            }
+            auto neighbors = graph.get_neighbors(vid);
+            if (neighbors.size() != 2) {
+                continue;
+            }
+            int n1 = neighbors[0];
+            int n2 = neighbors[1];
+            int w1 = graph.get_edge_weight(vid, n1);
+            int w2 = graph.get_edge_weight(vid, n2);
+
+            graph.remove_vertex(vid);
+
+            // Add direct edge
+            graph.add_edge(n1, n2, w1 + w2);
+            collapsed = true;
         }
     }
 

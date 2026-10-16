@@ -11,7 +11,6 @@ recursive-include deps/gffsub *.md LICENSE Makefile
 recursive-include deps/nlohmann *.hpp
 recursive-include deps/htslib *
 recursive-include src/cpp *.cpp *.h
-recursive-include src/cpp/third_party *.hpp
 recursive-include tests/cpp *.cpp
 recursive-include tests/python *.py
 recursive-include data *

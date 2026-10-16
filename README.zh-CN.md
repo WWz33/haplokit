@@ -227,6 +227,8 @@ haplokit view in.vcf.gz -r chr1:1000-2000 --network --network-method mjn --plot 
 | `msn` | 最小生成树网络 | 基于 Hamming 距离 |
 | `mjn` | 中值连接网络 | Bandelt et al. (1999) |
 
+默认 `--network-epsilon 0` 时，只有恰好达到三元组 Steiner 下界的中值节点才会被加入，因此 `mjn` 常与 `msn` 结果相同。提高该值可接受次优中值节点。
+
 <details>
 <summary><b>详细说明</b></summary>
 
@@ -366,7 +368,7 @@ chr2  5000  6000
 haplokit view in.vcf.gz -r chr1:1000-2000 --max-diff 0.2 --output-file out
 ```
 
-`--max-diff` 会把差异比例不高于阈值的单倍型聚为同一组。例如，`--max-diff 0.2` 会合并差异位点 ≤20% 的单倍型。
+`--max-diff` 会把差异比例不高于阈值的单倍型聚为同一组。例如，`--max-diff 0.2` 会合并差异位点 ≤20% 的单倍型。聚合后的行保留代表单倍型的逐位点等位基因模式，因此表格和网络图显示真实等位基因而非聚类标签。`--max-diff 0` 无法合并任何单倍型，按精确分组处理。
 
 ### 样本子集与缺失填补
 
@@ -463,6 +465,7 @@ haplokit view <input.vcf.gz|input.bcf> (-r <region> | -R <regions.bed> | -t <tar
 | `--hide-counts` | 关闭 | 隐藏样本数标签（默认） |
 | `-n, --network` | 关闭 | 绘制单倍型网络 |
 | `-N, --network-method` | `tcs` | 网络算法：`tcs`, `msn`, `mjn` |
+| `--network-epsilon` | `0` | 加入 MJN 中值节点时，允许超出 Steiner 下界的突变步数 |
 
 **标签选项**：
 
@@ -588,27 +591,42 @@ make clean
 
 #### `hapresult.tsv`
 
-`haplokit view` 的主要输出，包含单倍型定义和样本分配。
+`haplokit view` 的逐样本单倍型分配，每个样本一行。
 
-| 列名 | 类型 | 说明 |
-| --- | --- | --- |
-| `Hap` | string | 单倍型标签（如 Hap01, Hap02） |
-| `Count` | integer | 该单倍型的样本数 |
-| `Freq` | float | 频率（0-1） |
-| `State` | string | 等位基因模式，竖线分隔（如 `0\|0\|1\|0`） |
-| `Samples` | string | 逗号分隔的样本 ID |
-| `{Pop1}`, `{Pop2}`, ... | integer | 每个群体的计数（仅在提供 `-p` 时出现） |
+```text
+CHR     scaffold_1  scaffold_1  ...  Haplotypes:  8
+POS     4300        4345        ...  Individuals: 37
+INFO    .           .           ...  Variants:    7
+ALLELE  G/C         T/A,GG      ...  Accession
+Hap01   G           T           ...  C8;C9;C11;...
+```
+
+| 行 | 内容 |
+| --- | --- |
+| `CHR`、`POS`、`INFO`、`ALLELE` | 区间元数据和每个位点的等位基因文本 |
+| 数据行 | 每个样本一行：单倍型标签、各位点等位基因、样本 ID |
+
+使用 `-p` 时，`Accession` 前会多出一列 `Population`。
 
 #### `hap_summary.tsv`
 
-单倍型计数的简化汇总。
+`haplokit view` 的逐单倍型汇总，每个单倍型一行。
 
-| 列名 | 类型 | 说明 |
-| --- | --- | --- |
-| `Hap` | string | 单倍型标签 |
-| `Count` | integer | 总计数 |
-| `Freq` | float | 频率 |
-| `Samples` | string | 样本列表 |
+```text
+CHR     scaffold_1  scaffold_1  ...  Haplotypes:  8
+POS     4300        4345        ...  Individuals: 37
+INFO    .           .           ...  Variants:    7
+ALLELE  G/C         T/A,GG      ...  Accession  freq
+Hap01   G           T           ...  C8;C9;C11;...  10
+```
+
+| 列名 | 内容 |
+| --- | --- |
+| 数据行 | 单倍型标签、各位点等位基因、样本 ID、样本数 |
+| `Accession` | 携带该单倍型的样本 ID，分号分隔 |
+| `freq` | 该单倍型的样本数 |
+
+使用 `-p` 时，`Accession` 前会插入 `<群体>_n` 与 `<群体>_Accession` 列对。`freq` 列存放的是样本数，其分母为实际分配到单倍型的样本数，与 `Individuals:` 表头一致。
 
 #### `gff_ann_summary.tsv`
 

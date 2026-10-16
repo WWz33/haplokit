@@ -78,6 +78,8 @@ public:
     int add_vertex(const std::string& sequence, const std::vector<std::string>& samples = {});
     int add_median_vertex(const std::string& sequence);
     const Vertex* get_vertex(int id) const;
+    // Drops the vertex and every edge that touches it.
+    void remove_vertex(int id);
     size_t vertex_count() const { return vertices_.size(); }
     const std::vector<Vertex>& vertices() const { return vertices_; }
 
@@ -88,17 +90,9 @@ public:
     int get_edge_weight(int u, int v) const;
     const std::list<Edge>& edges() const { return edge_storage_.edges(); }
 
-    // Graph algorithms
-    std::vector<std::vector<int>> compute_distance_matrix() const;
-    void floyd_warshall_subset(const std::vector<int>& subgraph_nodes,
-                               std::vector<std::vector<int>>& dist) const;
-    int shortest_path_length(int u, int v) const;
-
     // Adjacency
     std::vector<int> get_neighbors(int v) const;
     int degree(int v) const;
-
-    void clear();
 
 private:
     std::vector<Vertex> vertices_;
